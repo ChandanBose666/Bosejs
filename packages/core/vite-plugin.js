@@ -10,11 +10,24 @@ module.exports = function bosePlugin(options = {}) {
   const actionEndpoint = options.actionEndpoint || '/_bose_action';
   const pagesDir = path.resolve(process.cwd(), options.pagesDir || 'src/pages');
 
+  // SSR Safety Net: Provide a global dummy for Bose markers
+  global.css$ = (css) => ({});
+  global.$ = (fn) => ({ chunk: 'dummy.js', props: [] });
+  global.server$ = (fn) => (async () => ({}));
+
   return {
     name: 'vite-plugin-bose',
     
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        // 0. Serve Bose Runtime
+        if (req.url === '/bose-runtime.js') {
+          const runtimePath = path.resolve(__dirname, '../runtime/bose-loader.js');
+          res.setHeader('Content-Type', 'application/javascript');
+          res.end(fs.readFileSync(runtimePath, 'utf-8'));
+          return;
+        }
+
         // 1. Handle RPC Actions
         if (req.url === actionEndpoint && req.method === 'POST') {
           let body = '';
@@ -60,24 +73,76 @@ module.exports = function bosePlugin(options = {}) {
           }
 
           if (targetFile) {
-            const content = fs.readFileSync(targetFile, 'utf-8');
-            // In a real framework, we'd use Vite's transformIndexHtml and SSR SSR logic
-            // For PoC, we send a simplified HTML shell
+            let htmlContent = '';
+            try {
+              // Reset styles for each request to avoid duplication
+              global.__BOSE_STYLES__ = [];
+              
+              // Unified SSR Loading: Triggers our 'transform' hook automatically
+              const module = await server.ssrLoadModule(targetFile);
+              const component = module.default;
+              
+              // Execute the component (JS or Transformed Markdown)
+              htmlContent = typeof component === 'function' ? await component({ params }) : component;
+            } catch (e) {
+              console.error(`[Bose SSR Error] ${targetFile}:`, e);
+              htmlContent = `<div style="padding: 2rem; background: #fee2e2; color: #991b1b; border-radius: 0.5rem; margin: 2rem;">
+                                <h3>SSR Rendering Error</h3>
+                                <pre>${e.message}</pre>
+                             </div>`;
+            }
+
             const styles = (global.__BOSE_STYLES__ || []).join('\n');
             res.setHeader('Content-Type', 'text/html');
+            
+            if (process.env.DEBUG_BOSE) {
+               console.log(`[Bose SSR] Rendering ${targetFile} with content length: ${htmlContent.length}`);
+            }
+
             res.end(`
               <!DOCTYPE html>
-              <html>
+              <html lang="en" class="dark">
                 <head>
-                  <style>${styles}</style>
-                  <script type="module" src="/packages/runtime/bose-loader.js"></script>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>Bosejs | The All-Powerful Framework</title>
+                  <link rel="preconnect" href="https://fonts.googleapis.com">
+                  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+                  <style>
+                    :root {
+                      --bg: #020617;
+                      --text: #f8fafc;
+                      --primary: #6366f1;
+                      --accent: #22d3ee;
+                    }
+                    * { box-sizing: border-box; }
+                    body { 
+                      margin: 0; 
+                      font-family: 'Inter', sans-serif; 
+                      background-color: var(--bg); 
+                      color: var(--text);
+                      line-height: 1.5;
+                      -webkit-font-smoothing: antialiased;
+                    }
+                    a { color: var(--primary); text-decoration: none; transition: opacity 0.2s; }
+                    a:hover { opacity: 0.8; }
+                    pre { 
+                      background: #0f172a; 
+                      padding: 1.25rem; 
+                      border-radius: 0.75rem; 
+                      overflow-x: auto; 
+                      border: 1px solid #1e293b;
+                      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+                    }
+                    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.9em; }
+                    .container { max-width: 1200px; margin: 0 auto; padding: 0 2rem; }
+                    ${styles}
+                  </style>
+                  <script type="module" src="/bose-runtime.js"></script>
                 </head>
                 <body>
-                  <div id="root">Rendering ${path.basename(targetFile)} with params ${JSON.stringify(params)}</div>
-                  <script type="module">
-                    // Simulate Client-side resumption
-                    console.log('[Bose Runtime] Route matched:', ${JSON.stringify(req.url)});
-                  </script>
+                  <div id="root">${htmlContent}</div>
                 </body>
               </html>
             `);
@@ -88,27 +153,39 @@ module.exports = function bosePlugin(options = {}) {
       });
     },
 
-    transform(code, id) {
-      if (id.endsWith('.md')) {
-        const { data, content } = matter(code);
-        const html = marked(content);
-        // Transform Markdown into a Bose component string
-        code = `export const frontmatter = ${JSON.stringify(data)};
-                export default function() {
-                  return \`${html}\`;
-                }`;
-      }
-
-      if (!id.endsWith('.bose') && !id.endsWith('.js') && !id.endsWith('.md')) return null;
+    async transform(code, id) {
+      const isMd = id.endsWith('.md');
+      const isJs = id.endsWith('.js') || id.endsWith('.bose');
+      
+      if (!isMd && !isJs) return null;
       if (id.includes('node_modules')) return null;
 
       try {
-        const result = babel.transformSync(code, {
+        let targetCode = code;
+
+        if (isMd) {
+          const { data, content } = matter(code);
+          const safeContent = content
+            .replace(/\\/g, '\\\\')
+            .replace(/`/g, '\\`');
+            
+          targetCode = `
+            import { marked } from 'marked';
+            export const frontmatter = ${JSON.stringify(data)};
+            export default async function(props = {}) {
+              const { params } = props;
+              const content = \`${safeContent}\`;
+              return marked(content);
+            }
+          `;
+        }
+
+        const result = babel.transformSync(targetCode, {
           plugins: [
             ['@babel/plugin-syntax-jsx'],
             [boseOptimizer, { outputDir: path.resolve(process.cwd(), outputDir) }]
           ],
-          filename: id,
+          filename: id + '.js',
           sourceMaps: true
         });
 
@@ -117,7 +194,7 @@ module.exports = function bosePlugin(options = {}) {
           map: result.map
         };
       } catch (err) {
-        console.error(`[Bose Vite] Error transforming ${id}:`, err.message);
+        fs.appendFileSync('bose-error.log', `Error in ${id}: ${err.message}\n`);
         return null;
       }
     }

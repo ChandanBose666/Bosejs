@@ -12,6 +12,11 @@ module.exports = function boseOptimizer() {
   return {
     name: 'bose-optimizer',
     visitor: {
+      Program(babelPath, state) {
+        if (state.filename.includes('Hero.js') || state.filename.includes('index.md')) {
+          console.log(`[Bose Optimizer] Processing: ${state.filename}`);
+        }
+      },
       CallExpression(babelPath, state) {
         const { callee } = babelPath.node;
         
@@ -130,25 +135,33 @@ export default function(state, element) {
         }
 
         // Detect css$( ... )
-        if (isIdentifier(callee) && callee.name === 'css$') {
-          const cssString = babelPath.node.arguments[0];
-          if (!t.isStringLiteral(cssString) && !t.isTemplateLiteral(cssString)) {
+        if (t.isIdentifier(callee) && callee.name === 'css$') {
+          const cssArg = babelPath.get('arguments.0');
+          let rawCss = '';
+          
+          if (t.isStringLiteral(cssArg.node)) {
+            rawCss = cssArg.node.value;
+          } else if (t.isTemplateLiteral(cssArg.node)) {
+            rawCss = cssArg.node.quasis.map(q => q.value.raw).join('');
+          } else {
              throw babelPath.buildCodeFrameError('css$( ) must contain a string literal or template literal.');
           }
-
-          const rawCss = t.isStringLiteral(cssString) ? cssString.value : state.file.code.slice(cssString.start + 1, cssString.end - 1);
           
-          const hash = Math.random().toString(36).substr(2, 6);
-          const scopeId = `bose-${hash}`;
-          const scopedCss = rawCss.replace(/\.([a-zA-Z0-9_-]+)/g, `.$1-${scopeId}`);
+          const scopeId = `bose_${Date.now().toString(36).slice(-6)}`;
+          
+          // Improved Regex: Must start with a lette/underscore/hyphen, and only match if it's a class selector
+          const classRegex = /\.([a-zA-Z_][a-zA-Z0-9_-]*)/g;
+          const scopedCss = rawCss.replace(classRegex, `.$1-${scopeId}`);
           
           if (!global.__BOSE_STYLES__) global.__BOSE_STYLES__ = [];
           global.__BOSE_STYLES__.push(scopedCss);
 
-          const classMatches = Array.from(rawCss.matchAll(/\.([a-zA-Z0-9_-]+)/g));
+          // Use the same regex to find classes for mapping
+          const classMatches = Array.from(rawCss.matchAll(classRegex));
           const mappingProperties = classMatches.map(match => {
             const className = match[1];
-            return t.objectProperty(t.identifier(className), t.stringLiteral(`${className}-${scopeId}`));
+            // Use stringLiteral for the key to safely handle hyphens like 'btn-primary'
+            return t.objectProperty(t.stringLiteral(className), t.stringLiteral(`${className}-${scopeId}`));
           });
 
           babelPath.replaceWith(t.objectExpression(mappingProperties));
@@ -157,7 +170,3 @@ export default function(state, element) {
     }
   };
 };
-
-function isIdentifier(node) {
-  return t.isIdentifier(node);
-}
