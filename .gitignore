@@ -4,4 +4,6 @@ dist
 *.log
 playground/public/chunks/*.js
 playground/dist
+website/public/chunks/*.js
+website/dist
 .env
