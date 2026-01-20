@@ -77,6 +77,14 @@ export default function Playground() {
         count.value++;
     });
 
+    const handleDecrement = $(() => {
+        count.value--;
+    });
+
+    const handleReset = $(() => {
+        count.value = 0;
+    });
+
     const handleColorChange = $(() => {
         const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#22d3ee'];
         color.value = colors[Math.floor(Math.random() * colors.length)];
@@ -93,14 +101,32 @@ export default function Playground() {
             </header>
             
             <div class="${styles.card}">
-                <div class="${styles.display}" bose:bind="count" style="color: ${color.value}">0</div>
+                <div class="${styles.display}" 
+                     bose:bind="count" 
+                     bose:bind:style="color:color" 
+                     style="color: ${color.value}">0</div>
                 
                 <div class="${styles.controls}">
+                    <button class="${styles.btn}" 
+                            bose:on:click="${handleDecrement.chunk}"
+                            bose:state='${JSON.stringify({ count: count.value })}'>
+                        -
+                    </button>
+
                     <button class="${styles.btn} ${styles['btn-primary']}" 
                             bose:on:click="${handleIncrement.chunk}"
                             bose:state='${JSON.stringify({ count: count.value })}'>
-                        Increment Count
+                        +
                     </button>
+
+                    <button class="${styles.btn}" 
+                            bose:on:click="${handleReset.chunk}"
+                            bose:state='${JSON.stringify({ count: count.value })}'>
+                        Reset
+                    </button>
+                </div>
+
+                <div class="${styles.controls}" style="margin-top: 1rem;">
                     <button class="${styles.btn}" 
                             bose:on:click="${handleColorChange.chunk}"
                             bose:state='${JSON.stringify({ color: color.value })}'>
