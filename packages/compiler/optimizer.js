@@ -81,7 +81,10 @@ import { Signal } from '@bose/state';
 export default function(state, element) {
   ${destructuring}
   const logic = ${state.file.code.slice(innerFunction.start, innerFunction.end)};
-  return logic(state, element);
+  logic(state, element);
+  return {
+    ${signalsArray.map(s => `${s}: ${s}.value`).join(',\n    ')}
+  };
 }
           `;
           
@@ -90,8 +93,10 @@ export default function(state, element) {
           fs.writeFileSync(path.join(outputDir, chunkFilename), chunkContent);
 
           // 4. Replace with Object containing chunk info and state keys
+          // Include 'chunks/' prefix so the runtime can load it correctly
+          const chunkPath = `chunks/${chunkFilename}`;
           babelPath.replaceWith(t.objectExpression([
-            t.objectProperty(t.identifier('chunk'), t.stringLiteral(chunkFilename)),
+            t.objectProperty(t.identifier('chunk'), t.stringLiteral(chunkPath)),
             t.objectProperty(t.identifier('props'), t.arrayExpression(variablesList.map(v => t.stringLiteral(v)))),
             t.objectProperty(t.identifier('signals'), t.arrayExpression(signalsArray.map(v => t.stringLiteral(v))))
           ]));

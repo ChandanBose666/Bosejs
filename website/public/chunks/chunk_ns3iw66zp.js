@@ -1,5 +1,5 @@
 
-/** BOSE GENERATED CHUNK: chunk_30pixintr **/
+/** BOSE GENERATED CHUNK: chunk_ns3iw66zp **/
 import { Signal } from '@bose/state';
 
 export default function(state, element) {

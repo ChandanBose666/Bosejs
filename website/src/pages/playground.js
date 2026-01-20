@@ -2,8 +2,9 @@ import { useSignal } from '@bose/state';
 import Layout from '../components/Layout.js';
 
 export default function Playground() {
-    const count = useSignal(0, 'playground-count');
-    const color = useSignal('#6366f1', 'playground-color');
+    // FIX: Signal IDs MUST match variable names for optimizer-generated chunks to sync correctly
+    const count = useSignal(0, 'count');
+    const color = useSignal('#6366f1', 'color');
 
     const styles = css$(`
         .playground-section {
@@ -92,13 +93,17 @@ export default function Playground() {
             </header>
             
             <div class="${styles.card}">
-                <div class="${styles.display}" bose:bind="playground-count" style="color: \${color.value}">0</div>
+                <div class="${styles.display}" bose:bind="count" style="color: ${color.value}">0</div>
                 
                 <div class="${styles.controls}">
-                    <button class="${styles.btn} ${styles['btn-primary']}" bose:on:click="\${handleIncrement.chunk}">
+                    <button class="${styles.btn} ${styles['btn-primary']}" 
+                            bose:on:click="${handleIncrement.chunk}"
+                            bose:state='${JSON.stringify({ count: count.value })}'>
                         Increment Count
                     </button>
-                    <button class="${styles.btn}" bose:on:click="\${handleColorChange.chunk}">
+                    <button class="${styles.btn}" 
+                            bose:on:click="${handleColorChange.chunk}"
+                            bose:state='${JSON.stringify({ color: color.value })}'>
                         Change Theme
                     </button>
                 </div>

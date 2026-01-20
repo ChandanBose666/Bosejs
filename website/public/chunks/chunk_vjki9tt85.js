@@ -1,5 +1,5 @@
 
-/** BOSE GENERATED CHUNK: chunk_iadefc3ox **/
+/** BOSE GENERATED CHUNK: chunk_vjki9tt85 **/
 import { Signal } from '@bose/state';
 
 export default function(state, element) {
@@ -7,6 +7,9 @@ export default function(state, element) {
   const logic = () => {
         count.value++;
     };
-  return logic(state, element);
+  logic(state, element);
+  return {
+    count: count.value
+  };
 }
           

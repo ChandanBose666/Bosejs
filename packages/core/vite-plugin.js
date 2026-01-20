@@ -28,6 +28,14 @@ module.exports = function bosePlugin(options = {}) {
           return;
         }
 
+        // 0.1. Serve Bose State
+        if (req.url === '/bose-state.js') {
+          const statePath = path.resolve(__dirname, '../state/index.js');
+          res.setHeader('Content-Type', 'application/javascript');
+          res.end(fs.readFileSync(statePath, 'utf-8'));
+          return;
+        }
+
         // 1. Handle RPC Actions
         if (req.url === actionEndpoint && req.method === 'POST') {
           let body = '';
@@ -72,30 +80,35 @@ module.exports = function bosePlugin(options = {}) {
             }
           }
 
-          if (targetFile) {
-            let htmlContent = '';
-            try {
-              // Reset styles for each request to avoid duplication
-              global.__BOSE_STYLES__ = [];
-              
-              // Unified SSR Loading: Triggers our 'transform' hook automatically
-              const module = await server.ssrLoadModule(targetFile);
-              const component = module.default;
-              
-              // Execute the component (JS or Transformed Markdown)
-              htmlContent = typeof component === 'function' ? await component({ params }) : component;
-            } catch (e) {
-              console.error(`[Bose SSR Error] ${targetFile}:`, e);
-              htmlContent = `<div style="padding: 2rem; background: #fee2e2; color: #991b1b; border-radius: 0.5rem; margin: 2rem;">
-                                <h3>SSR Rendering Error</h3>
-                                <pre>${e.message}</pre>
-                             </div>`;
-            }
-
-            const styles = (global.__BOSE_STYLES__ || []).join('\n');
-            res.setHeader('Content-Type', 'text/html');
-            
-            if (process.env.DEBUG_BOSE) {
+            if (targetFile) {
+             let htmlContent = '';
+             try {
+               // FIX: Do NOT reset styles. Cached modules won't re-run transform, 
+               // so we must persist styles from previous transforms.
+               // global.__BOSE_STYLES__ = [];
+               
+               // Unified SSR Loading: Triggers our 'transform' hook automatically
+               const module = await server.ssrLoadModule(targetFile);
+               const component = module.default;
+               
+               // Execute the component (JS or Transformed Markdown)
+               htmlContent = typeof component === 'function' ? await component({ params }) : component;
+             } catch (e) {
+               console.error(`[Bose SSR Error] ${targetFile}:`, e);
+               htmlContent = `<div style="padding: 2rem; background: #fee2e2; color: #991b1b; border-radius: 0.5rem; margin: 2rem;">
+                                 <h3>SSR Rendering Error</h3>
+                                 <pre>${e.message}</pre>
+                              </div>`;
+             }
+ 
+           
+           // FIX: Deduplicate styles using Set to prevent bloat while persisting history
+           const uniqueStyles = [...new Set(global.__BOSE_STYLES__ || [])];
+           const styles = uniqueStyles.join('\n');
+           
+             res.setHeader('Content-Type', 'text/html');
+             
+             if (process.env.DEBUG_BOSE) {
                console.log(`[Bose SSR] Rendering ${targetFile} with content length: ${htmlContent.length}`);
             }
 
@@ -109,6 +122,13 @@ module.exports = function bosePlugin(options = {}) {
                   <link rel="preconnect" href="https://fonts.googleapis.com">
                   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
                   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+                  <script type="importmap">
+                    {
+                      "imports": {
+                        "@bose/state": "/bose-state.js"
+                      }
+                    }
+                  </script>
                   <style>
                     :root {
                       --bg: #020617;

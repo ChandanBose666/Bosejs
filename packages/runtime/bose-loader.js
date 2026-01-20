@@ -16,10 +16,15 @@
     console.log(`[Bose Sync] Signal ${signalId} updated to:`, newValue);
   };
   const handleEvent = async (event) => {
-    const target = event.target.closest('[bose\\:on]');
+    // FIX: Select based on the specific event type (e.g. bose:on:click)
+    const attrName = `bose:on:${event.type}`;
+    // CSS selector needs escaping for colons: bose\:on\:click
+    const selector = `[${attrName.replace(/:/g, '\\:')}]`;
+    
+    const target = event.target.closest(selector);
     if (!target) return;
 
-    const actionAttr = target.getAttribute(`bose:on:${event.type}`);
+    const actionAttr = target.getAttribute(attrName);
     if (!actionAttr) return;
 
     try {
@@ -35,8 +40,8 @@
       
       if (newState) {
         target.setAttribute('bose:state', JSON.stringify(newState));
-        // Simple DOM sync for PoC
-        if (newState.count !== undefined) target.innerText = `Count is ${newState.count}`;
+        // FIX: Removed hardcoded target.innerText update. 
+        // Signals will handle the view updates via __BOSE_SYNC__
       }
     } catch (error) {
       console.error(`[Bose] Resumption Error:`, error);
