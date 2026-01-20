@@ -10,6 +10,10 @@ export default defineConfig({
   ],
   server: {
     port: 3000,
-    allowedHosts: ['bose-production.up.railway.app']
+    allowedHosts: [
+      'bose-production.up.railway.app',
+      '.up.railway.app',
+      'localhost'
+    ]
   }
 });
