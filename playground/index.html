@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bose PoC - Resumable Islands</title>
+    <!-- 1. The Bose Runtime (Inlined for speed) -->
+    <script src="../packages/runtime/bose-loader.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        background: #0f172a;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+      }
+      .card {
+        background: #1e293b;
+        padding: 2rem;
+        border-radius: 1rem;
+        border: 1px solid #334155;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        text-align: center;
+      }
+      button {
+        background: #38bdf8;
+        color: #0f172a;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        font-weight: bold;
+        cursor: pointer;
+        transition: transform 0.1s;
+      }
+      button:active {
+        transform: scale(0.95);
+      }
+      .info {
+        margin-top: 1rem;
+        color: #94a3b8;
+        font-size: 0.875rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+        <!-- The Bose Loader will handle everything here -->
+        <div class="card">
+            <h1>Bose + Vite</h1>
+            <p>Components are being automatically shredded by Vite.</p>
+            
+            <div id="app-container">
+                <!-- SSR would normally put content here -->
+                <button 
+                  bose:on:click="chunks/chunk_test.js" 
+                  bose:state='{"greeting": "Auto-optimized!"}'
+                >
+                  Predictable Shredding
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. Bose Runtime -->
+    <script type="module" src="/packages/runtime/bose-loader.js"></script>
+
+    <script type="module">
+        // 2. Load the transformed app (for demo purposes)
+        import App from './playground/app.js';
+        console.log('[Bose Vite Demo] Transformed App Module Path:', App);
+    </script>
+</body>
+</html>

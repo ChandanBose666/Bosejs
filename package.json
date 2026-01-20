@@ -1,0 +1,20 @@
+{
+  "name": "bose",
+  "version": "0.0.1",
+  "description": "The Hyper-Framework: Resumable Islands",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "playground"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "serve": "npx serve playground"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.6",
+    "@babel/plugin-syntax-jsx": "^7.28.6",
+    "@babel/preset-react": "^7.28.5",
+    "vite": "^7.3.1"
+  }
+}
