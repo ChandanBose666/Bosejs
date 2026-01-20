@@ -37,20 +37,35 @@ Bosejs is built as a monorepo for maximum modularity:
 
 ## 🚀 Getting Started
 
-Bosejs uses **Vite** for its build pipeline.
+Bosejs is designed to be installed as a standard npm package.
 
-### Installation
+### 1. Create a new project (Recommended)
+
+You can scaffold a new Bose app instantly using our CLI:
 
 ```bash
-git clone https://github.com/ChandanBose666/Bosejs.git
-cd Bosejs
+npx create-bose my-cool-app
+cd my-cool-app
 npm install
+npm run dev
 ```
 
-### Development
+### 2. Manual Installation
+
+If you want to add Bose to an existing project:
 
 ```bash
-npm run dev
+npm install bose
+```
+
+Then, add the plugin to your `vite.config.js`:
+
+```javascript
+import bosePlugin from "bose";
+
+export default {
+  plugins: [bosePlugin()],
+};
 ```
 
 ### How to use the `$( )` Optimizer

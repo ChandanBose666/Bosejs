@@ -1,0 +1,10 @@
+{
+  "name": "create-bose",
+  "version": "0.1.0",
+  "description": "Scaffold a new Bose framework application.",
+  "bin": {
+    "create-bose": "index.js"
+  },
+  "keywords": ["bose", "scaffold", "cli"],
+  "license": "MIT"
+}

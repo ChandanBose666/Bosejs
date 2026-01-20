@@ -1,13 +1,17 @@
 {
-  "name": "core",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "name": "bose",
+  "version": "0.1.0",
+  "description": "Bose Framework: All-powerful Resumable Islands.",
+  "main": "vite-plugin.js",
+  "dependencies": {
+    "@bose/compiler": "^0.1.0",
+    "@bose/runtime": "^0.1.0",
+    "@babel/core": "^7.22.0",
+    "@babel/plugin-syntax-jsx": "^7.22.0"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "peerDependencies": {
+    "vite": "^4.0.0 || ^5.0.0"
+  },
+  "keywords": ["bose", "framework", "vite-plugin", "resumability"],
+  "license": "MIT"
 }

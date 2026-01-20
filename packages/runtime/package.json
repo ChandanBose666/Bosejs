@@ -1,0 +1,8 @@
+{
+  "name": "@bose/runtime",
+  "version": "0.1.0",
+  "description": "The tiny resumable loader for Bose applications.",
+  "main": "bose-loader.js",
+  "keywords": ["bose", "runtime", "loader", "zero-hydration"],
+  "license": "MIT"
+}
