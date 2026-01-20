@@ -18,9 +18,9 @@ Bosejs uses a custom Babel-based compiler that "shreds" your code. Every interac
 
 Built-in error boundaries catch failures during the "Resumption" phase. If a specific interaction fails, Bosejs swaps in a fallback UI without crashing the rest of the page.
 
-### 4. Zero-Fetch API Layer (Planned)
+### 4. Zero-Fetch API Layer (Auto-RPC)
 
-Coming soon: Call server-side functions (DB queries, API calls) directly from your client components with automatic RPC—no more `fetch()` or `Axios`.
+Call server-side functions (DB queries, API calls) directly from your client components with automatic RPC—Bose handles the entire network layer for you.
 
 ---
 
@@ -68,20 +68,55 @@ export default {
 };
 ```
 
-### How to use the `$( )` Optimizer
+## 💡 Feature Guides
+
+### 1. Bose Signals (Fine-Grained Reactivity)
+
+Signals are the nervous system of Bose. They allow state to be shared across independent islands without full re-renders.
 
 ```javascript
 import { useSignal } from "@bose/state";
 
 export default function Counter() {
-  const count = useSignal(0);
+  // 1. Define a signal (shared globally if ID is provided)
+  const count = useSignal(0, "count");
 
-  // Everything in $() is automatically code-split by Bosejs
+  // 2. Logic is automatically extracted
   const increment = $(() => {
     count.value++;
   });
 
-  return <button onClick={increment}>Count is {count.value}</button>;
+  return `
+        <div>
+            <p>Count is: <span bose:bind="count">0</span></p>
+            <button bose:on:click="${increment.chunk}">Add</button>
+        </div>
+    `;
+}
+```
+
+### 2. Server Actions (Auto-RPC)
+
+Call server-side code without writing `fetch` or defined API routes.
+
+```javascript
+export default function AdminPanel() {
+  // This function ONLY runs on the server
+  const deleteUser = server$(async (id) => {
+    const db = await connect();
+    return await db.users.delete(id);
+  });
+
+  const handleClick = $(async () => {
+    const result = await deleteUser(123);
+    alert(result.status);
+  });
+
+  return `
+        <button bose:on:click="${handleClick.chunk}">
+            Delete User
+        </button>
+    `;
 }
 ```
 
@@ -93,9 +128,10 @@ export default function Counter() {
 - [x] Closure Extraction Compiler
 - [x] Prop Serialization (State Capture)
 - [x] Vite Integration
-- [ ] Server Actions (Auto-RPC)
+- [x] Server Actions (Auto-RPC)
+- [x] Fine-Grained Signals
 - [ ] Markdown & Astro-style Frontmatter support
-- [ ] CSS-in-JS (Serialized)
+- [ ] File-based Routing
 
 ---
 
