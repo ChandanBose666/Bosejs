@@ -16,5 +16,9 @@
     "@babel/plugin-syntax-jsx": "^7.28.6",
     "@babel/preset-react": "^7.28.5",
     "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "marked": "^17.0.1"
   }
 }

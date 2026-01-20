@@ -120,6 +120,31 @@ export default function AdminPanel() {
 }
 ```
 
+### 3. File-based Routing
+
+Bose automatically maps files in `src/pages` to URLs.
+
+- `src/pages/index.md` -> `/`
+- `src/pages/about.js` -> `/about`
+- `src/pages/product/[id].js` -> `/product/123` (Dynamic parameters available via `params`)
+
+### 4. Scoped CSS-in-JS (`css$( )`)
+
+Keep styles scoped to your island with zero runtime overhead.
+
+```javascript
+export default function StyledButton() {
+  const styles = css$(`
+        .btn { background: blue; color: white; }
+    `);
+  return `<button class="${styles.btn}">Styled Island</button>`;
+}
+```
+
+### 5. Markdown Support
+
+Bose treats `.md` files as components. You can use frontmatter for metadata and embed interactive `$( )` islands directly in your prose.
+
 ---
 
 ## 🗺️ Roadmap
@@ -130,8 +155,10 @@ export default function AdminPanel() {
 - [x] Vite Integration
 - [x] Server Actions (Auto-RPC)
 - [x] Fine-Grained Signals
-- [ ] Markdown & Astro-style Frontmatter support
-- [ ] File-based Routing
+- [x] File-based Routing
+- [x] Markdown Support
+- [x] Scoped CSS-in-JS
+- [ ] Production Edge Deployment (Bun/Cloudflare)
 
 ---
 

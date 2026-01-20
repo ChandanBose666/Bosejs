@@ -92,21 +92,16 @@ export default function(state, element) {
           ]));
         }
 
-        // NEW: Detect server$( ... )
+        // Detect server$( ... )
         if (isServerMarker) {
           const serverFunction = babelPath.node.arguments[0];
           if (!t.isFunction(serverFunction)) {
              throw babelPath.buildCodeFrameError('server$( ) must contain a function.');
           }
 
-          // 1. Generate a stable Action ID
           const actionId = `action_${Math.random().toString(36).substr(2, 9)}`;
-          
-          // 2. Register the action for the server (In a real app, this goes to a manifest)
           console.log(`[Bose Optimizer] Registered Server Action: ${actionId}`);
           
-          // 3. Replace server$(...) with an RPC call
-          // For PoC, we inline the fetch call. In production, this would be a runtime helper.
           babelPath.replaceWith(t.arrowFunctionExpression(
             [t.restElement(t.identifier('args'))],
             t.callExpression(
@@ -131,8 +126,38 @@ export default function(state, element) {
             true // async
           ));
           babelPath.node.async = true;
+          return; // Stop here to avoid processing as other markers
+        }
+
+        // Detect css$( ... )
+        if (isIdentifier(callee) && callee.name === 'css$') {
+          const cssString = babelPath.node.arguments[0];
+          if (!t.isStringLiteral(cssString) && !t.isTemplateLiteral(cssString)) {
+             throw babelPath.buildCodeFrameError('css$( ) must contain a string literal or template literal.');
+          }
+
+          const rawCss = t.isStringLiteral(cssString) ? cssString.value : state.file.code.slice(cssString.start + 1, cssString.end - 1);
+          
+          const hash = Math.random().toString(36).substr(2, 6);
+          const scopeId = `bose-${hash}`;
+          const scopedCss = rawCss.replace(/\.([a-zA-Z0-9_-]+)/g, `.$1-${scopeId}`);
+          
+          if (!global.__BOSE_STYLES__) global.__BOSE_STYLES__ = [];
+          global.__BOSE_STYLES__.push(scopedCss);
+
+          const classMatches = Array.from(rawCss.matchAll(/\.([a-zA-Z0-9_-]+)/g));
+          const mappingProperties = classMatches.map(match => {
+            const className = match[1];
+            return t.objectProperty(t.identifier(className), t.stringLiteral(`${className}-${scopeId}`));
+          });
+
+          babelPath.replaceWith(t.objectExpression(mappingProperties));
         }
       }
     }
   };
 };
+
+function isIdentifier(node) {
+  return t.isIdentifier(node);
+}
