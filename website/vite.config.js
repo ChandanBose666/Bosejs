@@ -13,7 +13,9 @@ export default defineConfig({
     allowedHosts: [
       'bose-production.up.railway.app',
       '.up.railway.app',
-      'localhost'
+      'localhost',
+      '.localtunnel.me',
+      '.loca.lt'
     ]
   }
 });
