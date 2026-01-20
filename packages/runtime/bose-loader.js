@@ -1,9 +1,20 @@
 /**
- * BOSE LOADER (PoC)
- * This script lives in the <head> and handles all user interactions.
- * It is 0-dependencies and ultra-lightweight.
+ * BOSE LOADER (v2)
+ * Handles resumability, error boundaries, and signal synchronization.
  */
 (function () {
+  const signalRegistry = new Map();
+
+  // Global Sync Function called by Signals
+  window.__BOSE_SYNC__ = (signalId, newValue) => {
+    signalRegistry.set(signalId, newValue);
+    // Find all elements listening to this signal
+    document.querySelectorAll(`[bose\\:bind*="${signalId}"]`).forEach(el => {
+        // Simple text update for PoC
+        el.innerText = newValue;
+    });
+    console.log(`[Bose Sync] Signal ${signalId} updated to:`, newValue);
+  };
   const handleEvent = async (event) => {
     const target = event.target.closest('[bose\\:on]');
     if (!target) return;

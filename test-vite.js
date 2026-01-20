@@ -4,7 +4,7 @@ const path = require('path');
 
 const plugin = bosePlugin({ outputDir: 'playground/public/chunks' });
 
-const testFile = path.resolve(__dirname, 'playground/app.js');
+const testFile = path.resolve(__dirname, 'playground/server-app.js');
 const code = fs.readFileSync(testFile, 'utf-8');
 
 console.log('--- Testing Bose Vite Plugin ---');

@@ -1,0 +1,8 @@
+{
+  "name": "@bose/state",
+  "version": "0.1.0",
+  "description": "Fine-grained reactive signals for Bose.",
+  "main": "index.js",
+  "keywords": ["bose", "state", "signals", "reactivity"],
+  "license": "MIT"
+}

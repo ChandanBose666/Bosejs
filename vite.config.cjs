@@ -13,7 +13,8 @@ module.exports = defineConfig({
   },
   resolve: {
     alias: {
-      '@bose/runtime': path.resolve(__dirname, 'packages/runtime/bose-loader.js')
+      '@bose/runtime': path.resolve(__dirname, 'packages/runtime/bose-loader.js'),
+      '@bose/state': path.resolve(__dirname, 'packages/state/index.js')
     }
   }
 });
