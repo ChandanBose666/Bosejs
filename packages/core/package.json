@@ -1,17 +1,53 @@
 {
   "name": "bose",
   "version": "0.1.0",
-  "description": "Bose Framework: All-powerful Resumable Islands.",
+  "description": "Bose Framework: All-powerful Resumable Islands. Combines Astro-style islands with Qwik-style zero-hydration resumability.",
+  "type": "module",
   "main": "vite-plugin.js",
+  "types": "vite-plugin.d.ts",
+  "exports": {
+    ".": {
+      "types": "./vite-plugin.d.ts",
+      "default": "./vite-plugin.js"
+    },
+    "./globals": {
+      "types": "./types/globals.d.ts"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "globals": ["./types/globals.d.ts"]
+    }
+  },
+  "files": [
+    "vite-plugin.js",
+    "vite-plugin.d.ts",
+    "types/",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosejs/bosejs.git",
+    "directory": "packages/core"
+  },
   "dependencies": {
-    "@bose/compiler": "^0.1.0",
-    "@bose/runtime": "^0.1.0",
+    "@bosejs/compiler": "^0.1.0",
+    "@bosejs/runtime": "^0.1.0",
+    "@bosejs/state": "^0.1.0",
     "@babel/core": "^7.22.0",
-    "@babel/plugin-syntax-jsx": "^7.22.0"
+    "@babel/plugin-syntax-jsx": "^7.22.0",
+    "gray-matter": "^4.0.3",
+    "marked": "^17.0.1"
   },
   "peerDependencies": {
     "vite": "^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0"
   },
-  "keywords": ["bose", "framework", "vite-plugin", "resumability"],
+  "keywords": ["bose", "framework", "vite-plugin", "resumability", "islands", "zero-hydration"],
   "license": "MIT"
 }

@@ -1,9 +1,15 @@
-node_modules
-dist
+node_modules/
+dist/
 .DS_Store
 *.log
-playground/public/chunks/*.js
-playground/dist
-website/public/chunks/*.js
-website/dist
 .env
+.env*.local
+
+# Generated chunks (build artifacts — deterministically reproducible)
+playground/public/chunks/
+playground/dist/
+website/public/chunks/
+website/dist/
+
+# Test artifacts
+test_output.txt

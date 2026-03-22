@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "bose": "file:../packages/core",
-    "@bose/compiler": "file:../packages/compiler",
-    "@bose/runtime": "file:../packages/runtime",
-    "@bose/state": "file:../packages/state"
+    "@bosejs/compiler": "file:../packages/compiler",
+    "@bosejs/runtime": "file:../packages/runtime",
+    "@bosejs/state": "file:../packages/state"
   },
   "devDependencies": {
     "vite": "^7.3.1"

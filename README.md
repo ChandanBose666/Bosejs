@@ -75,7 +75,7 @@ export default {
 Signals are the nervous system of Bose. They allow state to be shared across independent islands without full re-renders.
 
 ```javascript
-import { useSignal } from "@bose/state";
+import { useSignal } from "@bosejs/state";
 
 export default function Counter() {
   // 1. Define a signal (shared globally if ID is provided)

@@ -1,131 +1,175 @@
 /**
  * BOSE LOADER (v2)
  * Handles resumability, error boundaries, and signal synchronization.
+ * ES module — self-initializes on import via <script type="module">.
+ *
+ * Debug logging: set window.__BOSE_DEBUG__ = true (or localStorage.boseDebug = '1')
+ * before this script loads to enable verbose output.
  */
-(function () {
-  const signalRegistry = new Map();
-  // Cache definitions must be at the top to be accessible by __BOSE_SYNC__
-  const moduleCache = new Map();
-  const stateCache = new WeakMap();
 
-  // Global Sync Function called by Signals
-  window.__BOSE_SYNC__ = (signalId, newValue) => {
-    signalRegistry.set(signalId, newValue);
-    
-    // 1. Text Content Bindings match: bose:bind="signalId"
-    document.querySelectorAll(`[bose\\:bind="${signalId}"]`).forEach(el => {
-        el.innerText = newValue;
-    });
+const signalRegistry = new Map();
+const moduleCache = new Map();
+const stateCache = new WeakMap();
 
-    // 2. Style Bindings match: bose:bind:style="property:signalId"
-    document.querySelectorAll(`[bose\\:bind\\:style]`).forEach(el => {
-        const binding = el.getAttribute('bose:bind:style');
-        const [property, boundId] = binding.split(':');
-        if (boundId.trim() === signalId) {
-             el.style[property] = newValue;
-        }
-    });
+/** Log only when debug mode is active — silent in production by default. */
+const debug = (...args) => {
+  if (window.__BOSE_DEBUG__ || localStorage.getItem('boseDebug') === '1') {
+    console.log('[Bose]', ...args);
+  }
+};
 
-    // 3. State Synchronization (FIX for Decrement/Reset stale state)
-    // Update bose:state on ALL elements that use this signal
-    document.querySelectorAll('[bose\\:state]').forEach(el => {
-        let state;
-        // Check memory cache first
-        if (stateCache.has(el)) {
-            state = stateCache.get(el);
-        } else {
-            try {
-                const attr = el.getAttribute('bose:state');
-                // Optimization: Skip parsing if signalId isn't in string (simple check)
-                if (!attr.includes(signalId)) return; 
-                state = JSON.parse(attr);
-            } catch (e) { return; }
-        }
+// ── Signal Synchronization ────────────────────────────────────────────────────
 
-        // If this element's state contains the signal, update it
-        if (state && Object.prototype.hasOwnProperty.call(state, signalId)) {
-            // Only update if value actually changed
-            if (state[signalId] !== newValue) {
-                state[signalId] = newValue;
-                stateCache.set(el, state);
-                el.setAttribute('bose:state', JSON.stringify(state));
-            }
-        }
-    });
+/**
+ * Called by Signal.notify() whenever a reactive value changes.
+ * Updates all DOM elements bound to this signal ID without re-rendering.
+ */
+window.__BOSE_SYNC__ = (signalId, newValue) => {
+  signalRegistry.set(signalId, newValue);
 
-    console.log(`[Bose Sync] Signal ${signalId} updated to:`, newValue);
-  };
-
-  const handleEvent = async (event) => {
-    // FIX: Select based on the specific event type (e.g. bose:on:click)
-    const attrName = `bose:on:${event.type}`;
-    // CSS selector needs escaping for colons: bose\:on\:click
-    const selector = `[${attrName.replace(/:/g, '\\:')}]`;
-    
-    // Performance: Use closest only if necessary, but here we scan from target up
-    const target = event.target.closest(selector);
-    if (!target) return;
-    
-    const actionAttr = target.getAttribute(attrName);
-    if (!actionAttr) return;
-
-    try {
-      // Opt: 1. State Caching (Read from memory if available)
-      let state;
-      if (stateCache.has(target)) {
-        state = stateCache.get(target);
-      } else {
-        const stateStr = target.getAttribute('bose:state') || '{}';
-        state = JSON.parse(stateStr);
-      }
-
-      // Opt: 2. Module Caching (Avoid repeated imports)
-      let module;
-      if (moduleCache.has(actionAttr)) {
-        module = moduleCache.get(actionAttr);
-      } else {
-        // In the real world, actionAttr is the path to the chunk
-        // Vite serves /chunks/id.js
-        console.log(`[Bose] Loading chunk: ${actionAttr}`);
-        module = await import('/' + actionAttr);
-        moduleCache.set(actionAttr, module);
-      }
-
-      const newState = await module.default(state, target);
-      
-      if (newState) {
-        // Update Memory Cache
-        stateCache.set(target, newState);
-        // Persist to DOM for resumability (can be debounced if needed, but keeping sync for now)
-        target.setAttribute('bose:state', JSON.stringify(newState));
-      }
-    } catch (error) {
-      console.error(`[Bose] Resumption Error:`, error);
-      handleError(target, error);
-    }
-  };
-
-  const handleError = (element, error) => {
-    const boundary = element.closest('[bose\\:boundary]');
-    if (boundary) {
-      const boundaryId = boundary.getAttribute('bose:boundary');
-      const fallbackTemplate = document.getElementById(`fallback_${boundaryId}`);
-      if (fallbackTemplate) {
-        boundary.innerHTML = fallbackTemplate.innerHTML;
-        return;
-      }
-    }
-    // Global Fallback if no boundary found
-    alert('Bose critical error: ' + error.message);
-  };
-
-  // Delegate all common events to the window
-  ["click", "input", "change"].forEach((type) => {
-    window.addEventListener(type, handleEvent, { capture: true });
+  // 1. Text content bindings: <span bose:bind="signalId">
+  //    Use textContent (not innerText) — avoids layout reflow on every update.
+  document.querySelectorAll(`[bose\\:bind="${signalId}"]`).forEach(el => {
+    el.textContent = newValue;
   });
 
-  console.log(
-    "%c Bose Runtime Initialized (Zero JS Loaded) ",
-    "background: #222; color: #bada55",
-  );
-})();
+  // 2. Style bindings: <div bose:bind:style="color:signalId">
+  document.querySelectorAll('[bose\\:bind\\:style]').forEach(el => {
+    const binding = el.getAttribute('bose:bind:style');
+    const colonIdx = binding.indexOf(':');
+    if (colonIdx === -1) return;
+    const property = binding.slice(0, colonIdx);
+    const boundId = binding.slice(colonIdx + 1).trim();
+    if (boundId === signalId) {
+      el.style[property] = newValue;
+    }
+  });
+
+  // 3. State synchronization — keep bose:state attributes in sync so the
+  //    next resumption picks up the latest signal value.
+  document.querySelectorAll('[bose\\:state]').forEach(el => {
+    let state;
+    if (stateCache.has(el)) {
+      state = stateCache.get(el);
+    } else {
+      try {
+        const attr = el.getAttribute('bose:state');
+        // Skip parsing if the signal key isn't mentioned at all (fast path).
+        if (!attr || !attr.includes(signalId)) return;
+        state = JSON.parse(attr);
+      } catch { return; }
+    }
+
+    if (state && Object.prototype.hasOwnProperty.call(state, signalId)) {
+      if (state[signalId] !== newValue) {
+        state[signalId] = newValue;
+        stateCache.set(el, state);
+        el.setAttribute('bose:state', JSON.stringify(state));
+      }
+    }
+  });
+
+  debug(`Signal "${signalId}" →`, newValue);
+};
+
+// ── Event Handling ────────────────────────────────────────────────────────────
+
+const handleEvent = async (event) => {
+  // Guard: synthetic / programmatically dispatched events can have null targets.
+  if (!event.target) return;
+
+  const attrName = `bose:on:${event.type}`;
+  const selector = `[${attrName.replace(/:/g, '\\:')}]`;
+
+  const target = event.target.closest(selector);
+  if (!target) return;
+
+  const actionAttr = target.getAttribute(attrName);
+  if (!actionAttr) return;
+
+  // Prevent default for submit — the chunk handles the action entirely.
+  if (event.type === 'submit') event.preventDefault();
+
+  try {
+    // Read state — prefer the in-memory cache over re-parsing the DOM attribute.
+    let state;
+    if (stateCache.has(target)) {
+      state = stateCache.get(target);
+    } else {
+      const stateStr = target.getAttribute('bose:state') || '{}';
+      state = JSON.parse(stateStr);
+    }
+
+    // Load the chunk — served from /chunks/<id>.js.
+    // moduleCache avoids redundant network requests for repeated interactions.
+    let mod;
+    if (moduleCache.has(actionAttr)) {
+      mod = moduleCache.get(actionAttr);
+    } else {
+      debug(`Loading chunk: ${actionAttr}`);
+      mod = await import('/' + actionAttr);
+      moduleCache.set(actionAttr, mod);
+    }
+
+    const newState = await mod.default(state, target);
+
+    if (newState) {
+      stateCache.set(target, newState);
+      target.setAttribute('bose:state', JSON.stringify(newState));
+    }
+  } catch (error) {
+    console.error('[Bose] Resumption error:', error);
+    handleError(target, error);
+  }
+};
+
+// ── Error Boundaries ──────────────────────────────────────────────────────────
+
+const handleError = (element, error) => {
+  // Walk up the tree to find the nearest error boundary.
+  const boundary = element.closest('[bose\\:boundary]');
+
+  if (boundary) {
+    const boundaryId = boundary.getAttribute('bose:boundary');
+    const fallbackTemplate = document.getElementById(`fallback_${boundaryId}`);
+
+    if (fallbackTemplate) {
+      boundary.innerHTML = fallbackTemplate.innerHTML;
+      // Dispatch a catchable event so the app can log/report if needed.
+      window.dispatchEvent(new CustomEvent('bose:error', {
+        bubbles: false,
+        detail: {
+          message: error.message,
+          boundaryId,
+          recovered: true,
+        },
+      }));
+      return;
+    }
+  }
+
+  // No boundary found — dispatch an unrecovered error event.
+  // Developers can listen for 'bose:error' on window to show a toast, log to
+  // an error tracker, etc. We never call alert() or block the UI thread.
+  window.dispatchEvent(new CustomEvent('bose:error', {
+    bubbles: false,
+    detail: {
+      message: error.message,
+      stack: error.stack,
+      recovered: false,
+    },
+  }));
+};
+
+// ── Initialisation ────────────────────────────────────────────────────────────
+
+// Event delegation — intercept at capture phase so bose:on:* attributes take
+// precedence over any inline handlers on child elements.
+['click', 'input', 'change', 'submit', 'keyup', 'keydown'].forEach(type => {
+  window.addEventListener(type, handleEvent, { capture: true });
+});
+
+console.log(
+  '%c Bose Runtime v2 ',
+  'background: #6366f1; color: #fff; font-weight: bold; border-radius: 3px; padding: 2px 6px;',
+);
