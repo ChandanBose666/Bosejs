@@ -198,7 +198,8 @@ export default function bosePlugin(options = {}) {
           const { data, content } = matter(code);
           const safeContent = content
             .replace(/\\/g, '\\\\')
-            .replace(/`/g, '\\`');
+            .replace(/`/g, '\\`')
+            .replace(/\$\{/g, '\\${');
 
           targetCode = `
             import { marked } from 'marked';
