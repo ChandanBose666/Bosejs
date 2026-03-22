@@ -1,6 +1,6 @@
 {
   "name": "@bosejs/state",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Fine-grained reactive signals for Bose.",
   "type": "module",
   "main": "index.js",
@@ -14,7 +14,8 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "LICENSE"
+    "LICENSE",
+    "README.md"
   ],
   "engines": {
     "node": ">=18.0.0"

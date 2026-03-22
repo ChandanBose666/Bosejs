@@ -1,6 +1,6 @@
 {
   "name": "create-bose",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Scaffold a new Bose framework application.",
   "type": "module",
   "bin": {
@@ -8,7 +8,8 @@
   },
   "files": [
     "index.js",
-    "LICENSE"
+    "LICENSE",
+    "README.md"
   ],
   "engines": {
     "node": ">=18.0.0"

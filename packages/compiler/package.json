@@ -1,6 +1,6 @@
 {
   "name": "@bosejs/compiler",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The 'Brain' of Bose framework. Handles closure extraction and resumability shredding.",
   "type": "module",
   "main": "optimizer.js",
@@ -14,7 +14,8 @@
   "files": [
     "optimizer.js",
     "optimizer.d.ts",
-    "LICENSE"
+    "LICENSE",
+    "README.md"
   ],
   "engines": {
     "node": ">=18.0.0"
