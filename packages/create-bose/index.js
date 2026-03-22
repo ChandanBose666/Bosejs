@@ -36,7 +36,7 @@ write(file('package.json'), JSON.stringify({
     preview: 'vite preview',
   },
   dependencies: {
-    bose: 'latest',
+    '@bosejs/core': 'latest',
     '@bosejs/state': 'latest',
   },
   devDependencies: {
@@ -48,7 +48,7 @@ write(file('package.json'), JSON.stringify({
 
 write(file('vite.config.js'), `\
 import { defineConfig } from 'vite';
-import bosePlugin from 'bose';
+import bosePlugin from '@bosejs/core';
 
 export default defineConfig({
   plugins: [bosePlugin()],
