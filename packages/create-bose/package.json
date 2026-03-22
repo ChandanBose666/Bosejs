@@ -1,7 +1,7 @@
 {
   "name": "create-bose",
-  "version": "0.1.1",
-  "description": "Scaffold a new Bose framework application.",
+  "version": "0.1.2",
+  "description": "Scaffold a new Bosejs application — zero hydration, resumable islands, lazy chunks.",
   "type": "module",
   "bin": {
     "create-bose": "index.js"
@@ -23,10 +23,16 @@
     "directory": "packages/create-bose"
   },
   "keywords": [
+    "bosejs",
     "bose",
     "scaffold",
     "cli",
-    "create"
+    "create",
+    "resumable",
+    "islands",
+    "zero-hydration",
+    "vite",
+    "framework"
   ],
   "license": "MIT"
 }
