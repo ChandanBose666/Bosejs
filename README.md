@@ -24,24 +24,40 @@ Call server-side functions (DB queries, API calls) directly from your client com
 
 ---
 
-## 🛠️ Project Structure
+## 📦 Packages
 
-Bosejs is built as a monorepo for maximum modularity:
+Bosejs is published as a monorepo. As a **user you only install two packages** — the rest are internal dependencies pulled in automatically.
 
-- `/packages/compiler`: The "Brain" - Babel plugins for closure extraction and scope analysis.
-- `/packages/runtime`: The "Heart" - A tiny (<2KB) loader that manages event interception and resumption.
-- `/packages/core`: The "Connector" - Official Vite plugin for a seamless dev experience.
-- `/playground`: A live environment to test features and see "Zero-JS" in action.
+| Package | Install? | Role |
+|---|---|---|
+| `@bosejs/core` | ✅ Yes | Vite plugin — file-based routing, SSR, dev server |
+| `@bosejs/state` | ✅ Yes | Fine-grained reactive signals (`useSignal`) |
+| `@bosejs/compiler` | 🔧 Auto | Babel plugin — extracts `$()` closures into lazy chunks |
+| `@bosejs/runtime` | 🔧 Auto | Tiny (<2KB) browser loader — resumes event handlers |
+
+When you install `@bosejs/core`, npm automatically installs `@bosejs/compiler` and `@bosejs/runtime` as transitive dependencies. You never need to touch them directly.
+
+`@bosejs/state` is listed separately because you import from it directly in your page files (`import { useSignal } from '@bosejs/state'`), so it needs to be an explicit dependency in your project.
+
+---
+
+## 🛠️ Monorepo Structure
+
+```
+packages/
+  core/        ← @bosejs/core    (Vite plugin)
+  compiler/    ← @bosejs/compiler (Babel plugin, auto-installed)
+  runtime/     ← @bosejs/runtime  (Browser loader, auto-installed)
+  state/       ← @bosejs/state   (Signals)
+  create-bose/ ← create-bose     (Project scaffold CLI)
+playground/    ← local dev sandbox
+```
 
 ---
 
 ## 🚀 Getting Started
 
-Bosejs is designed to be installed as a standard npm package.
-
 ### 1. Create a new project (Recommended)
-
-You can scaffold a new Bose app instantly using our CLI:
 
 ```bash
 npx create-bose my-cool-app
@@ -50,22 +66,25 @@ npm install
 npm run dev
 ```
 
+Then open `http://localhost:5173`.
+
 ### 2. Manual Installation
 
-If you want to add Bose to an existing project:
+If you want to add Bosejs to an existing Vite project:
 
 ```bash
-npm install bose
+npm install @bosejs/core @bosejs/state
 ```
 
-Then, add the plugin to your `vite.config.js`:
+Add the plugin to your `vite.config.js`:
 
 ```javascript
-import bosePlugin from "bose";
+import { defineConfig } from "vite";
+import bosePlugin from "@bosejs/core";
 
-export default {
+export default defineConfig({
   plugins: [bosePlugin()],
-};
+});
 ```
 
 ## 💡 Feature Guides
@@ -97,11 +116,11 @@ export default function Counter() {
 
 ### 2. Server Actions (Auto-RPC)
 
-Call server-side code without writing `fetch` or defined API routes.
+Call server-side code without writing `fetch` or defining API routes.
 
 ```javascript
 export default function AdminPanel() {
-  // This function ONLY runs on the server
+  // This function ONLY runs on the server — never shipped to the browser
   const deleteUser = server$(async (id) => {
     const db = await connect();
     return await db.users.delete(id);
@@ -109,7 +128,7 @@ export default function AdminPanel() {
 
   const handleClick = $(async () => {
     const result = await deleteUser(123);
-    alert(result.status);
+    console.log(result.status);
   });
 
   return `
