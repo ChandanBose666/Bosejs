@@ -24,9 +24,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bosejs/bosejs.git",
+    "url": "git+https://github.com/bosejs/bosejs.git",
     "directory": "packages/runtime"
   },
-  "keywords": ["bose", "runtime", "loader", "zero-hydration"],
+  "keywords": [
+    "bose",
+    "runtime",
+    "loader",
+    "zero-hydration"
+  ],
   "license": "MIT"
 }

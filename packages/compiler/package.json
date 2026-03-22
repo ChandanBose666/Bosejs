@@ -24,7 +24,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bosejs/bosejs.git",
+    "url": "git+https://github.com/bosejs/bosejs.git",
     "directory": "packages/compiler"
   },
   "dependencies": {
@@ -34,6 +34,12 @@
   "peerDependencies": {
     "@babel/core": "^7.0.0"
   },
-  "keywords": ["bose", "compiler", "resumability", "qwik", "astro"],
+  "keywords": [
+    "bose",
+    "compiler",
+    "resumability",
+    "qwik",
+    "astro"
+  ],
   "license": "MIT"
 }

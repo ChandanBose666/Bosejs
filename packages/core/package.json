@@ -16,7 +16,9 @@
   },
   "typesVersions": {
     "*": {
-      "globals": ["./types/globals.d.ts"]
+      "globals": [
+        "./types/globals.d.ts"
+      ]
     }
   },
   "files": [
@@ -33,7 +35,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bosejs/bosejs.git",
+    "url": "git+https://github.com/bosejs/bosejs.git",
     "directory": "packages/core"
   },
   "dependencies": {
@@ -48,6 +50,13 @@
   "peerDependencies": {
     "vite": "^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0"
   },
-  "keywords": ["bose", "framework", "vite-plugin", "resumability", "islands", "zero-hydration"],
+  "keywords": [
+    "bose",
+    "framework",
+    "vite-plugin",
+    "resumability",
+    "islands",
+    "zero-hydration"
+  ],
   "license": "MIT"
 }

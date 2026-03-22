@@ -18,9 +18,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bosejs/bosejs.git",
+    "url": "git+https://github.com/bosejs/bosejs.git",
     "directory": "packages/create-bose"
   },
-  "keywords": ["bose", "scaffold", "cli", "create"],
+  "keywords": [
+    "bose",
+    "scaffold",
+    "cli",
+    "create"
+  ],
   "license": "MIT"
 }

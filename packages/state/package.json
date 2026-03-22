@@ -24,9 +24,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bosejs/bosejs.git",
+    "url": "git+https://github.com/bosejs/bosejs.git",
     "directory": "packages/state"
   },
-  "keywords": ["bose", "state", "signals", "reactivity"],
+  "keywords": [
+    "bose",
+    "state",
+    "signals",
+    "reactivity"
+  ],
   "license": "MIT"
 }
