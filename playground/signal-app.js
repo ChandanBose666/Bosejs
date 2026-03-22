@@ -1,4 +1,4 @@
-import { useSignal } from '@bose/state';
+import { useSignal } from '@bosejs/state';
 
 export default function SignalCounter() {
     const count = useSignal(0, 'count');

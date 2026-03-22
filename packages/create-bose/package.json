@@ -2,9 +2,25 @@
   "name": "create-bose",
   "version": "0.1.0",
   "description": "Scaffold a new Bose framework application.",
+  "type": "module",
   "bin": {
     "create-bose": "index.js"
   },
-  "keywords": ["bose", "scaffold", "cli"],
+  "files": [
+    "index.js",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosejs/bosejs.git",
+    "directory": "packages/create-bose"
+  },
+  "keywords": ["bose", "scaffold", "cli", "create"],
   "license": "MIT"
 }

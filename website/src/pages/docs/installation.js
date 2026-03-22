@@ -18,7 +18,7 @@ npx create-bose my-app
 If you prefer to integrate Bosejs into an existing project, install the core packages:
 
 \`\`\`bash
-npm install bose @bose/state
+npm install bose @bosejs/state
 \`\`\`
 
 ## 3. Configuration

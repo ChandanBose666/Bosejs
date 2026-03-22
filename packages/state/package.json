@@ -1,8 +1,32 @@
 {
-  "name": "@bose/state",
+  "name": "@bosejs/state",
   "version": "0.1.0",
   "description": "Fine-grained reactive signals for Bose.",
+  "type": "module",
   "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosejs/bosejs.git",
+    "directory": "packages/state"
+  },
   "keywords": ["bose", "state", "signals", "reactivity"],
   "license": "MIT"
 }

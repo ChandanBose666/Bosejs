@@ -1,6 +1,9 @@
-const babel = require('@babel/core');
-const optimizer = require('./optimizer');
-const path = require('path');
+import babel from '@babel/core';
+import optimizer from './optimizer.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const code = `
 export default function Counter() {

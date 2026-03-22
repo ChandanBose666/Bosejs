@@ -12,7 +12,7 @@ Signals are the nervous system of Bosejs. They provide fine-grained reactivity, 
 The \`useSignal\` hook creates a reactive value. When used inside a serialized function (like \`$()\`), it retains its connection to the UI elements that depend on it.
 
 \`\`\`javascript
-import { useSignal } from '@bose/state';
+import { useSignal } from '@bosejs/state';
 
 // 1. Create a signal
 // If you provide an ID ('count'), it becomes a global shared signal

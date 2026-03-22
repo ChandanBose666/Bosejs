@@ -1,4 +1,4 @@
-import { useSignal } from '@bose/state';
+import { useSignal } from '@bosejs/state';
 import Layout from '../components/Layout.js';
 
 export default function Playground() {

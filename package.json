@@ -9,7 +9,13 @@
   ],
   "scripts": {
     "dev": "vite",
-    "serve": "npx serve playground"
+    "serve": "npx serve playground",
+    "publish:compiler": "npm publish --access public --workspace packages/compiler",
+    "publish:runtime": "npm publish --access public --workspace packages/runtime",
+    "publish:state": "npm publish --access public --workspace packages/state",
+    "publish:core": "npm publish --access public --workspace packages/core",
+    "publish:create-bose": "npm publish --access public --workspace packages/create-bose",
+    "publish:all": "npm run publish:compiler && npm run publish:runtime && npm run publish:state && npm run publish:core && npm run publish:create-bose"
   },
   "devDependencies": {
     "@babel/core": "^7.28.6",

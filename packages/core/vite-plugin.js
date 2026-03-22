@@ -1,28 +1,46 @@
-const babel = require('@babel/core');
-const boseOptimizer = require('../compiler/optimizer');
-const path = require('path');
-const fs = require('fs');
-const { marked } = require('marked');
-const matter = require('gray-matter');
+import babel from '@babel/core';
+import boseOptimizer from '@bosejs/compiler';
+import path from 'path';
+import fs from 'fs';
+import { marked } from 'marked';
+import matter from 'gray-matter';
+import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
-module.exports = function bosePlugin(options = {}) {
-  const outputDir = options.outputDir || 'playground/public/chunks';
+const _require = createRequire(import.meta.url);
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export default function bosePlugin(options = {}) {
+  const outputDir = options.outputDir || 'public/chunks';
   const actionEndpoint = options.actionEndpoint || '/_bose_action';
   const pagesDir = path.resolve(process.cwd(), options.pagesDir || 'src/pages');
 
-  // SSR Safety Net: Provide a global dummy for Bose markers
-  global.css$ = (css) => ({});
-  global.$ = (fn) => ({ chunk: 'dummy.js', props: [] });
-  global.server$ = (fn) => (async () => ({}));
+  // SSR Safety Net: Provide global dummy implementations for Bose markers
+  // so server-side code never ships closures or CSS to the browser.
+  // css$ returns an empty object (no styles at runtime — styles are
+  // collected during Babel transform and injected into the HTML shell).
+  global.css$ = () => ({});
+  global.$ = () => ({ chunk: 'dummy.js', props: [] });
+  global.server$ = () => (async () => ({}));
+
+  // Set by configResolved. Drives chunk emission strategy:
+  //   dev  → write to disk (Vite dev server serves static files)
+  //   build → this.emitFile() (Rollup manages output directory)
+  let isBuild = false;
 
   return {
     name: 'vite-plugin-bose',
-    
+
+    configResolved(config) {
+      isBuild = config.command === 'build';
+    },
+
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         // 0. Serve Bose Runtime
         if (req.url === '/bose-runtime.js') {
-          const runtimePath = path.resolve(__dirname, '../runtime/bose-loader.js');
+          const runtimePath = _require.resolve('@bosejs/runtime');
           res.setHeader('Content-Type', 'application/javascript');
           res.end(fs.readFileSync(runtimePath, 'utf-8'));
           return;
@@ -30,7 +48,7 @@ module.exports = function bosePlugin(options = {}) {
 
         // 0.1. Serve Bose State
         if (req.url === '/bose-state.js') {
-          const statePath = path.resolve(__dirname, '../state/index.js');
+          const statePath = _require.resolve('@bosejs/state');
           res.setHeader('Content-Type', 'application/javascript');
           res.end(fs.readFileSync(statePath, 'utf-8'));
           return;
@@ -45,8 +63,8 @@ module.exports = function bosePlugin(options = {}) {
               const { id, args } = JSON.parse(body);
               console.log(`[Bose RPC] Invoking: ${id} with args:`, args);
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ 
-                success: true, 
+              res.end(JSON.stringify({
+                success: true,
                 data: `Server received: ${args[0]}`,
                 processedAt: new Date().toISOString()
               }));
@@ -62,7 +80,7 @@ module.exports = function bosePlugin(options = {}) {
         if (req.method === 'GET' && !req.url.includes('.')) {
           console.log(`[Bose Router] Matching route: ${req.url}`);
           const urlPath = req.url === '/' ? '/index' : req.url;
-          
+
           let targetFile = null;
           let params = {};
 
@@ -72,7 +90,7 @@ module.exports = function bosePlugin(options = {}) {
             const relPath = '/' + file.replace(/\.(js|md)$/, '').replace(/\\/g, '/');
             const pattern = relPath.replace(/\[([^\]]+)\]/g, '(?<$1>[^/]+)');
             const match = urlPath.match(new RegExp(`^${pattern}$`));
-            
+
             if (match) {
               targetFile = path.join(pagesDir, file);
               params = match.groups || {};
@@ -80,36 +98,32 @@ module.exports = function bosePlugin(options = {}) {
             }
           }
 
-            if (targetFile) {
-             let htmlContent = '';
-             try {
-               // FIX: Do NOT reset styles. Cached modules won't re-run transform, 
-               // so we must persist styles from previous transforms.
-               // global.__BOSE_STYLES__ = [];
-               
-               // Unified SSR Loading: Triggers our 'transform' hook automatically
-               const module = await server.ssrLoadModule(targetFile);
-               const component = module.default;
-               
-               // Execute the component (JS or Transformed Markdown)
-               htmlContent = typeof component === 'function' ? await component({ params }) : component;
-             } catch (e) {
-               console.error(`[Bose SSR Error] ${targetFile}:`, e);
-               htmlContent = `<div style="padding: 2rem; background: #fee2e2; color: #991b1b; border-radius: 0.5rem; margin: 2rem;">
-                                 <h3>SSR Rendering Error</h3>
-                                 <pre>${e.message}</pre>
-                              </div>`;
-             }
- 
-           
-           // FIX: Deduplicate styles using Set to prevent bloat while persisting history
-           const uniqueStyles = [...new Set(global.__BOSE_STYLES__ || [])];
-           const styles = uniqueStyles.join('\n');
-           
-             res.setHeader('Content-Type', 'text/html');
-             
-             if (process.env.DEBUG_BOSE) {
-               console.log(`[Bose SSR] Rendering ${targetFile} with content length: ${htmlContent.length}`);
+          if (targetFile) {
+            let htmlContent = '';
+            try {
+              const module = await server.ssrLoadModule(targetFile);
+              const component = module.default;
+              htmlContent = typeof component === 'function' ? await component({ params }) : component;
+            } catch (e) {
+              console.error(`[Bose SSR Error] ${targetFile}:`, e);
+              htmlContent = `<div style="padding: 2rem; background: #fee2e2; color: #991b1b; border-radius: 0.5rem; margin: 2rem;">
+                               <h3>SSR Rendering Error</h3>
+                               <pre>${e.message}</pre>
+                            </div>`;
+            }
+
+            // Collect all scoped CSS registered during Babel transforms.
+            // __BOSE_STYLE_MAP__ is a Map<filename, string[]> populated by
+            // the optimizer's post() hook. Each file occupies exactly one entry
+            // so there is no unbounded growth and no cross-request accumulation.
+            // HMR re-transforms overwrite the entry for their file cleanly.
+            const styleMap = global.__BOSE_STYLE_MAP__ || new Map();
+            const styles = Array.from(styleMap.values()).flat().join('\n');
+
+            res.setHeader('Content-Type', 'text/html');
+
+            if (process.env.DEBUG_BOSE) {
+              console.log(`[Bose SSR] Rendering ${targetFile} with content length: ${htmlContent.length}`);
             }
 
             res.end(`
@@ -119,13 +133,10 @@ module.exports = function bosePlugin(options = {}) {
                   <meta charset="UTF-8">
                   <meta name="viewport" content="width=device-width, initial-scale=1.0">
                   <title>Bosejs | The All-Powerful Framework</title>
-                  <link rel="preconnect" href="https://fonts.googleapis.com">
-                  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-                  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
                   <script type="importmap">
                     {
                       "imports": {
-                        "@bose/state": "/bose-state.js"
+                        "@bosejs/state": "/bose-state.js"
                       }
                     }
                   </script>
@@ -137,21 +148,21 @@ module.exports = function bosePlugin(options = {}) {
                       --accent: #22d3ee;
                     }
                     * { box-sizing: border-box; }
-                    body { 
-                      margin: 0; 
-                      font-family: 'Inter', sans-serif; 
-                      background-color: var(--bg); 
+                    body {
+                      margin: 0;
+                      font-family: system-ui, sans-serif;
+                      background-color: var(--bg);
                       color: var(--text);
                       line-height: 1.5;
                       -webkit-font-smoothing: antialiased;
                     }
                     a { color: var(--primary); text-decoration: none; transition: opacity 0.2s; }
                     a:hover { opacity: 0.8; }
-                    pre { 
-                      background: #0f172a; 
-                      padding: 1.25rem; 
-                      border-radius: 0.75rem; 
-                      overflow-x: auto; 
+                    pre {
+                      background: #0f172a;
+                      padding: 1.25rem;
+                      border-radius: 0.75rem;
+                      overflow-x: auto;
                       border: 1px solid #1e293b;
                       box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
                     }
@@ -176,7 +187,7 @@ module.exports = function bosePlugin(options = {}) {
     async transform(code, id) {
       const isMd = id.endsWith('.md');
       const isJs = id.endsWith('.js') || id.endsWith('.bose');
-      
+
       if (!isMd && !isJs) return null;
       if (id.includes('node_modules')) return null;
 
@@ -188,7 +199,7 @@ module.exports = function bosePlugin(options = {}) {
           const safeContent = content
             .replace(/\\/g, '\\\\')
             .replace(/`/g, '\\`');
-            
+
           targetCode = `
             import { marked } from 'marked';
             export const frontmatter = ${JSON.stringify(data)};
@@ -200,14 +211,40 @@ module.exports = function bosePlugin(options = {}) {
           `;
         }
 
+        // Per-file collector: the Babel plugin fills this Map during transformSync.
+        // We process it immediately after — while `this` (Vite plugin context) is still valid.
+        const chunkCollector = new Map();
+        const resolvedOutputDir = path.resolve(process.cwd(), outputDir);
+
         const result = babel.transformSync(targetCode, {
           plugins: [
             ['@babel/plugin-syntax-jsx'],
-            [boseOptimizer, { outputDir: path.resolve(process.cwd(), outputDir) }]
+            [boseOptimizer, {
+              outputDir: resolvedOutputDir,
+              chunkCollector,
+            }]
           ],
-          filename: id + '.js',
+          filename: id,
           sourceMaps: true
         });
+
+        // Emit or write every chunk the Babel plugin extracted from this file.
+        for (const [filename, content] of chunkCollector) {
+          if (isBuild) {
+            // Production: let Rollup manage the output path and hashing pipeline.
+            this.emitFile({
+              type: 'asset',
+              fileName: `chunks/${filename}`,
+              source: content,
+            });
+          } else {
+            // Dev: write to disk so Vite's static file server can serve them.
+            if (!fs.existsSync(resolvedOutputDir)) {
+              fs.mkdirSync(resolvedOutputDir, { recursive: true });
+            }
+            fs.writeFileSync(path.join(resolvedOutputDir, filename), content);
+          }
+        }
 
         return {
           code: result.code,
@@ -219,4 +256,4 @@ module.exports = function bosePlugin(options = {}) {
       }
     }
   };
-};
+}

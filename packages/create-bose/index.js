@@ -1,66 +1,168 @@
 #!/usr/bin/env node
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 const projectName = process.argv[2] || 'my-bose-app';
 const targetDir = path.resolve(process.cwd(), projectName);
 
-console.log(`🚀 Creating a new Bose framework app in ${targetDir}...`);
+console.log(`\nCreating a new Bose app in ${targetDir}...\n`);
 
 if (fs.existsSync(targetDir)) {
-  console.error(`Error: Directory ${projectName} already exists.`);
+  console.error(`Error: Directory "${projectName}" already exists. Choose a different name.`);
   process.exit(1);
 }
 
-fs.mkdirSync(targetDir, { recursive: true });
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-// 1. Basic package.json for the new app
-const packageJson = {
+function write(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content);
+}
+
+function file(...segments) {
+  return path.join(targetDir, ...segments);
+}
+
+// ── package.json ─────────────────────────────────────────────────────────────
+
+write(file('package.json'), JSON.stringify({
   name: projectName,
-  version: "0.1.0",
+  version: '0.1.0',
   private: true,
+  type: 'module',
   scripts: {
-    "dev": "vite",
-    "build": "vite build"
+    dev: 'vite',
+    build: 'vite build',
+    preview: 'vite preview',
   },
   dependencies: {
-    "bose": "latest",
-    "vite": "^5.0.0"
-  }
-};
+    bose: 'latest',
+    '@bosejs/state': 'latest',
+  },
+  devDependencies: {
+    vite: 'latest',
+  },
+}, null, 2));
 
-fs.writeFileSync(path.join(targetDir, 'package.json'), JSON.stringify(packageJson, null, 2));
+// ── vite.config.js ───────────────────────────────────────────────────────────
 
-// 2. Simple App Template
-const appCode = `
-export default function App() {
-  const greeting = "Hello from your new Bose App!";
-  const handleClick = $(() => alert(greeting));
-
-  return \`
-    <h1>Welcome to Bose</h1>
-    <button bose:on:click="\${handleClick.chunk}" bose:state='{"greeting": "\${greeting}"}'>
-      Click Me!
-    </button>
-  \`;
-}
-`;
-
-fs.writeFileSync(path.join(targetDir, 'app.js'), appCode);
-
-// 3. Vite Config Template
-const viteConfig = `
+write(file('vite.config.js'), `\
 import { defineConfig } from 'vite';
 import bosePlugin from 'bose';
 
 export default defineConfig({
-  plugins: [bosePlugin()]
+  plugins: [bosePlugin()],
 });
-`;
+`);
 
-fs.writeFileSync(path.join(targetDir, 'vite.config.js'), viteConfig);
+// ── src/pages/index.js ───────────────────────────────────────────────────────
+// This is the home page component — maps to the "/" route.
+//
+// Key concepts shown here:
+//   useSignal  — import from @bosejs/state. Creates reactive state that
+//                the compiler serialises into HTML for zero-hydration.
+//
+//   $( )       — a GLOBAL compiler marker (no import needed). The Bose
+//                compiler extracts the closure into its own lazy chunk.
+//                The page loads with 0 JS; the chunk is fetched only on
+//                the first interaction.
+//
+//   bose:bind  — reactive text binding. Updated instantly by the runtime
+//                when the signal changes — no re-render.
+//
+//   bose:state — serialised state embedded in HTML. The chunk reads this
+//                on resumption so it never loses context.
 
-console.log(`\n✅ Success! Run:`);
-console.log(`   cd ${projectName}`);
-console.log(`   npm install`);
-console.log(`   npm run dev`);
+write(file('src', 'pages', 'index.js'), `\
+import { useSignal } from '@bosejs/state';
+
+export default function Home() {
+  // useSignal creates reactive state. The compiler injects a stable ID
+  // so the runtime can sync DOM nodes to this signal after resumption.
+  const count = useSignal(0);
+
+  // $() is a global compiler marker — no import needed.
+  // The closure is extracted into a separate JS chunk that is fetched
+  // lazily on the first click. Until then, 0 bytes of JS are loaded.
+  const increment = $(() => {
+    count.value++;
+  });
+
+  const decrement = $(() => {
+    count.value--;
+  });
+
+  const reset = $(() => {
+    count.value = 0;
+  });
+
+  return \`
+    <div style="
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #020617;
+      color: #f8fafc;
+    ">
+      <h1 style="font-size: 2rem; margin-bottom: 0.25rem;">Bose Counter</h1>
+      <p style="color: #94a3b8; margin-bottom: 3rem;">
+        Resumable island &mdash; <strong>0 JS</strong> on page load.
+      </p>
+
+      <!-- bose:bind keeps this span in sync with the 'count' signal -->
+      <div style="font-size: 6rem; font-weight: 900; line-height: 1; margin-bottom: 2rem;">
+        <span bose:bind="count">\${count.value}</span>
+      </div>
+
+      <div style="display: flex; gap: 1rem;">
+        <button
+          style="padding: 0.75rem 1.5rem; border-radius: 0.5rem; border: 1px solid #334155; background: #1e293b; color: #f8fafc; font-size: 1.25rem; cursor: pointer;"
+          bose:on:click="\${decrement.chunk}"
+          bose:state='\${JSON.stringify({ count: count.value })}'>
+          −
+        </button>
+
+        <button
+          style="padding: 0.75rem 1.5rem; border-radius: 0.5rem; border: 1px solid #334155; background: #1e293b; color: #f8fafc; font-size: 1.25rem; cursor: pointer;"
+          bose:on:click="\${reset.chunk}"
+          bose:state='\${JSON.stringify({ count: count.value })}'>
+          Reset
+        </button>
+
+        <button
+          style="padding: 0.75rem 1.5rem; border-radius: 0.5rem; border: none; background: #6366f1; color: #fff; font-size: 1.25rem; cursor: pointer;"
+          bose:on:click="\${increment.chunk}"
+          bose:state='\${JSON.stringify({ count: count.value })}'>
+          +
+        </button>
+      </div>
+    </div>
+  \`;
+}
+`);
+
+// ── .gitignore ────────────────────────────────────────────────────────────────
+
+write(file('.gitignore'), `\
+node_modules/
+dist/
+public/chunks/
+bose-error.log
+.env*.local
+`);
+
+// ── Done ─────────────────────────────────────────────────────────────────────
+
+const steps = [
+  `  cd ${projectName}`,
+  `  npm install`,
+  `  npm run dev`,
+];
+
+console.log('Done! Next steps:\n');
+console.log(steps.join('\n'));
+console.log('\nThen open http://localhost:5173\n');

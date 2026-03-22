@@ -1,6 +1,37 @@
-const t = require('@babel/types');
-const fs = require('fs');
-const path = require('path');
+import * as t from '@babel/types';
+import generate from '@babel/generator';
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+
+/**
+ * Write a chunk to disk.
+ * Used in dev mode (Vite dev server serves from the filesystem)
+ * and as a standalone fallback when no chunkCollector is provided.
+ */
+function writeToDisk(outputDir, filename, content) {
+  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+  fs.writeFileSync(path.join(outputDir, filename), content);
+}
+
+/**
+ * Returns a short deterministic hash from a string.
+ * Same input always produces the same 9-character hex ID.
+ */
+function contentHash(input) {
+  return crypto.createHash('sha1').update(input).digest('hex').slice(0, 9);
+}
+
+/**
+ * Regenerate source from a Babel AST node safely.
+ * This avoids the fragile `file.code.slice(node.start, node.end)` pattern,
+ * which breaks when prior plugins have already transformed the source.
+ */
+function nodeToCode(node) {
+  // @babel/generator default export varies by version — handle both shapes.
+  const gen = typeof generate === 'function' ? generate : generate.default;
+  return gen(node).code;
+}
 
 /**
  * BOSE OPTIMIZER
@@ -8,25 +39,71 @@ const path = require('path');
  * 2. Extracts the inner function to a new file.
  * 3. Replaces the $( ... ) with the chunk reference.
  */
-module.exports = function boseOptimizer() {
+export default function boseOptimizer() {
   return {
     name: 'bose-optimizer',
+
+    // Called once before traversing each file.
+    // Resets per-file style collection so HMR re-transforms start clean.
+    pre() {
+      this.boseStyles = [];
+    },
+
+    // Called once after traversing each file.
+    // Commits collected styles to a global Map keyed by filename.
+    // Using a Map (not an array) means each file occupies exactly one entry —
+    // no unbounded growth, no cross-request accumulation.
+    post() {
+      if (!this.boseStyles.length) return;
+      if (!global.__BOSE_STYLE_MAP__) global.__BOSE_STYLE_MAP__ = new Map();
+      global.__BOSE_STYLE_MAP__.set(this.filename || 'unknown', this.boseStyles);
+    },
+
     visitor: {
       Program(babelPath, state) {
-        if (state.filename.includes('Hero.js') || state.filename.includes('index.md')) {
+        if (state.filename && (state.filename.includes('Hero.js') || state.filename.includes('index.md'))) {
           console.log(`[Bose Optimizer] Processing: ${state.filename}`);
         }
       },
       CallExpression(babelPath, state) {
         const { callee } = babelPath.node;
-        
-        // Safety check for identifier name
+
+        // ── useSignal ID injection ──────────────────────────────────────────────
+        // If useSignal(value) is called without an explicit ID, inject the
+        // variable name as the ID. This must happen before the $() visitor
+        // so the inner traversal sees the final, ID-stamped useSignal call.
+        //
+        // The injected ID is intentionally just the variable name (e.g. 'count'),
+        // NOT a file-scoped hash. Reason: the chunk content reconstructs signals
+        // as `new Signal(state.count, 'count')` — same name. If we inject a
+        // longer ID here, the two sides diverge and __BOSE_SYNC__ breaks.
+        //
+        // Side-effect: two components with `const count = useSignal(0)` share the
+        // same global signal. This IS the intended "Nervous System" behaviour.
+        // Developers who want component-local signals must pass an explicit unique ID:
+        //   useSignal(0, 'counter-a-count')
+        if (t.isIdentifier(callee) && callee.name === 'useSignal') {
+          if (babelPath.node.arguments.length < 2) {
+            // Resolve variable name from the declarator: const count = useSignal(0)
+            // Falls back to 'signal' for unusual patterns (no declarator, destructuring).
+            const parent = babelPath.parent;
+            const varName =
+              t.isVariableDeclarator(parent) && t.isIdentifier(parent.id)
+                ? parent.id.name
+                : 'signal';
+
+            babelPath.node.arguments.push(t.stringLiteral(varName));
+            console.log(`[Bose Optimizer] Injected signal ID: "${varName}"`);
+          }
+          return; // nothing more to do for useSignal
+        }
+
         const isBoseMarker = t.isIdentifier(callee) && callee.name === '$';
         const isServerMarker = t.isIdentifier(callee) && callee.name === 'server$';
 
         if (isBoseMarker) {
           const innerFunction = babelPath.node.arguments[0];
-          
+
           if (!t.isFunction(innerFunction)) {
             throw babelPath.buildCodeFrameError('The $( ) marker must contain a function.');
           }
@@ -35,21 +112,22 @@ module.exports = function boseOptimizer() {
           const usedVariables = new Set();
           const signalsList = new Set();
           const innerFunctionPath = babelPath.get('arguments.0');
-          
+
           innerFunctionPath.traverse({
             Identifier(idPath) {
               if (idPath.isReferencedIdentifier()) {
                 const name = idPath.node.name;
                 const binding = idPath.scope.getBinding(name);
-                
+
                 if (binding && !innerFunctionPath.scope.hasOwnBinding(name)) {
                   usedVariables.add(name);
-                  
-                  // Detect if this variable was initialized with useSignal
+
                   const parentPath = binding.path;
-                  if (parentPath.isVariableDeclarator() && 
-                      t.isCallExpression(parentPath.node.init) && 
-                      parentPath.node.init.callee.name === 'useSignal') {
+                  if (
+                    parentPath.isVariableDeclarator() &&
+                    t.isCallExpression(parentPath.node.init) &&
+                    parentPath.node.init.callee.name === 'useSignal'
+                  ) {
                     signalsList.add(name);
                   }
                 }
@@ -61,12 +139,16 @@ module.exports = function boseOptimizer() {
           const signalsArray = Array.from(signalsList);
           console.log(`[Bose Optimizer] Captured variables:`, variablesList, 'Signals:', signalsArray);
 
-          // 2. Generate Unique ID
-          const chunkId = `chunk_${Math.random().toString(36).substr(2, 9)}`;
+          // 2. Regenerate function source from AST (safe — not affected by prior transforms)
+          const fnSource = nodeToCode(innerFunction);
+
+          // 3. Deterministic chunk ID: hash of file path + function source + captured vars
+          //    Same source in same file always produces the same chunk filename across builds.
+          const hashInput = `${state.filename}:${fnSource}:${variablesList.join(',')}`;
+          const chunkId = `chunk_${contentHash(hashInput)}`;
           const chunkFilename = `${chunkId}.js`;
-          
-          // 3. Save Chunk with "Destructured State"
-          // If it's a signal, we need to re-wrap it into a Signal object for reactivity
+
+          // 4. Build chunk content using the safely-regenerated function source
           const destructuring = variablesList.map(v => {
             if (signalsList.has(v)) {
               return `const ${v} = new Signal(state.${v}, '${v}');`;
@@ -74,26 +156,32 @@ module.exports = function boseOptimizer() {
             return `const ${v} = state.${v};`;
           }).join('\n  ');
 
-          const chunkContent = `
-/** BOSE GENERATED CHUNK: ${chunkId} **/
-import { Signal } from '@bose/state';
+          const chunkContent = [
+            `/** BOSE GENERATED CHUNK: ${chunkId} **/`,
+            `import { Signal } from '@bosejs/state';`,
+            ``,
+            `export default function(state, element) {`,
+            `  ${destructuring}`,
+            `  const logic = ${fnSource};`,
+            `  logic(state, element);`,
+            `  return {`,
+            `    ${signalsArray.map(s => `${s}: ${s}.value`).join(',\n    ')}`,
+            `  };`,
+            `}`,
+          ].join('\n');
 
-export default function(state, element) {
-  ${destructuring}
-  const logic = ${state.file.code.slice(innerFunction.start, innerFunction.end)};
-  logic(state, element);
-  return {
-    ${signalsArray.map(s => `${s}: ${s}.value`).join(',\n    ')}
-  };
-}
-          `;
-          
+          // 5. Hand chunk off — either to the Vite collector or directly to disk.
+          //    chunkCollector is a Map provided by vite-plugin.js during its transform hook.
+          //    When present, the Vite plugin decides how to emit (emitFile vs fs.write).
+          //    When absent (standalone / test usage), fall back to writing to disk.
           const outputDir = state.opts.outputDir || 'dist/chunks';
-          if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
-          fs.writeFileSync(path.join(outputDir, chunkFilename), chunkContent);
+          if (state.opts.chunkCollector) {
+            state.opts.chunkCollector.set(chunkFilename, chunkContent);
+          } else {
+            writeToDisk(outputDir, chunkFilename, chunkContent);
+          }
 
-          // 4. Replace with Object containing chunk info and state keys
-          // Include 'chunks/' prefix so the runtime can load it correctly
+          // 6. Replace $(...) with a plain descriptor object the renderer can use
           const chunkPath = `chunks/${chunkFilename}`;
           babelPath.replaceWith(t.objectExpression([
             t.objectProperty(t.identifier('chunk'), t.stringLiteral(chunkPath)),
@@ -106,12 +194,14 @@ export default function(state, element) {
         if (isServerMarker) {
           const serverFunction = babelPath.node.arguments[0];
           if (!t.isFunction(serverFunction)) {
-             throw babelPath.buildCodeFrameError('server$( ) must contain a function.');
+            throw babelPath.buildCodeFrameError('server$( ) must contain a function.');
           }
 
-          const actionId = `action_${Math.random().toString(36).substr(2, 9)}`;
+          // Deterministic action ID: hash of file path + server function source
+          const fnSource = nodeToCode(serverFunction);
+          const actionId = `action_${contentHash(`${state.filename}:${fnSource}`)}`;
           console.log(`[Bose Optimizer] Registered Server Action: ${actionId}`);
-          
+
           babelPath.replaceWith(t.arrowFunctionExpression(
             [t.restElement(t.identifier('args'))],
             t.callExpression(
@@ -131,42 +221,48 @@ export default function(state, element) {
                 ]),
                 t.identifier('then')
               ),
-              [t.arrowFunctionExpression([t.identifier('r')], t.callExpression(t.memberExpression(t.identifier('r'), t.identifier('json')), []))]
+              [t.arrowFunctionExpression(
+                [t.identifier('r')],
+                t.callExpression(t.memberExpression(t.identifier('r'), t.identifier('json')), [])
+              )]
             ),
             true // async
           ));
           babelPath.node.async = true;
-          return; // Stop here to avoid processing as other markers
+          return;
         }
 
         // Detect css$( ... )
         if (t.isIdentifier(callee) && callee.name === 'css$') {
           const cssArg = babelPath.get('arguments.0');
           let rawCss = '';
-          
+
           if (t.isStringLiteral(cssArg.node)) {
             rawCss = cssArg.node.value;
           } else if (t.isTemplateLiteral(cssArg.node)) {
             rawCss = cssArg.node.quasis.map(q => q.value.raw).join('');
           } else {
-             throw babelPath.buildCodeFrameError('css$( ) must contain a string literal or template literal.');
+            throw babelPath.buildCodeFrameError('css$( ) must contain a string literal or template literal.');
           }
-          
-          const scopeId = `bose_${Date.now().toString(36).slice(-6)}`;
-          
-          // Improved Regex: Must start with a lette/underscore/hyphen, and only match if it's a class selector
+
+          // Deterministic scope ID: hash of file path + raw CSS content
+          // Short prefix keeps class names readable; hash prevents collisions.
+          const scopeId = `b${contentHash(`${state.filename}:${rawCss}`).slice(0, 6)}`;
+
           const classRegex = /\.([a-zA-Z_][a-zA-Z0-9_-]*)/g;
           const scopedCss = rawCss.replace(classRegex, `.$1-${scopeId}`);
-          
-          if (!global.__BOSE_STYLES__) global.__BOSE_STYLES__ = [];
-          global.__BOSE_STYLES__.push(scopedCss);
 
-          // Use the same regex to find classes for mapping
+          // Store in per-file collection (set up by pre() hook).
+          // The post() hook commits this to global.__BOSE_STYLE_MAP__.
+          state.boseStyles.push(scopedCss);
+
           const classMatches = Array.from(rawCss.matchAll(classRegex));
           const mappingProperties = classMatches.map(match => {
             const className = match[1];
-            // Use stringLiteral for the key to safely handle hyphens like 'btn-primary'
-            return t.objectProperty(t.stringLiteral(className), t.stringLiteral(`${className}-${scopeId}`));
+            return t.objectProperty(
+              t.stringLiteral(className),
+              t.stringLiteral(`${className}-${scopeId}`)
+            );
           });
 
           babelPath.replaceWith(t.objectExpression(mappingProperties));
@@ -174,4 +270,4 @@ export default function(state, element) {
       }
     }
   };
-};
+}

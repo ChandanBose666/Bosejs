@@ -1,8 +1,32 @@
 {
-  "name": "@bose/runtime",
+  "name": "@bosejs/runtime",
   "version": "0.1.0",
   "description": "The tiny resumable loader for Bose applications.",
+  "type": "module",
   "main": "bose-loader.js",
+  "types": "bose-loader.d.ts",
+  "exports": {
+    ".": {
+      "types": "./bose-loader.d.ts",
+      "default": "./bose-loader.js"
+    }
+  },
+  "files": [
+    "bose-loader.js",
+    "bose-loader.d.ts",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosejs/bosejs.git",
+    "directory": "packages/runtime"
+  },
   "keywords": ["bose", "runtime", "loader", "zero-hydration"],
   "license": "MIT"
 }

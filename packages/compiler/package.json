@@ -1,8 +1,36 @@
 {
-  "name": "@bose/compiler",
+  "name": "@bosejs/compiler",
   "version": "0.1.0",
   "description": "The 'Brain' of Bose framework. Handles closure extraction and resumability shredding.",
+  "type": "module",
   "main": "optimizer.js",
+  "types": "optimizer.d.ts",
+  "exports": {
+    ".": {
+      "types": "./optimizer.d.ts",
+      "default": "./optimizer.js"
+    }
+  },
+  "files": [
+    "optimizer.js",
+    "optimizer.d.ts",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosejs/bosejs.git",
+    "directory": "packages/compiler"
+  },
+  "dependencies": {
+    "@babel/generator": "^7.0.0",
+    "@babel/types": "^7.0.0"
+  },
   "peerDependencies": {
     "@babel/core": "^7.0.0"
   },
