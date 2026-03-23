@@ -111,7 +111,7 @@ const handleEvent = async (event) => {
       moduleCache.set(actionAttr, mod);
     }
 
-    const newState = await mod.default(state, target);
+    const newState = await mod.default(state, target, event);
 
     if (newState) {
       stateCache.set(target, newState);

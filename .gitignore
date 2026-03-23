@@ -6,10 +6,14 @@ dist/
 .env*.local
 
 # Generated chunks (build artifacts — deterministically reproducible)
+public/chunks/
 playground/public/chunks/
 playground/dist/
 website/public/chunks/
 website/dist/
+
+# Bose temp files: server action modules written during dev for ssrLoadModule
+node_modules/.bose/
 
 # Test artifacts
 test_output.txt
