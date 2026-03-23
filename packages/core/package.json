@@ -1,6 +1,6 @@
 {
   "name": "@bosejs/core",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Bose Framework: All-powerful Resumable Islands. Combines Astro-style islands with Qwik-style zero-hydration resumability.",
   "type": "module",
   "main": "vite-plugin.js",

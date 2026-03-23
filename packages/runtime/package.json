@@ -1,6 +1,6 @@
 {
   "name": "@bosejs/runtime",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "The tiny resumable loader for Bose applications.",
   "type": "module",
   "main": "bose-loader.js",
