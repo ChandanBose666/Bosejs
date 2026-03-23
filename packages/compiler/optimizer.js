@@ -47,6 +47,10 @@ export default function boseOptimizer() {
     // Resets per-file style collection so HMR re-transforms start clean.
     pre() {
       this.boseStyles = [];
+      // Maps variable name → actionId for server$() assignments in this file.
+      // Used by the $() chunk generator to inline RPC calls instead of reading
+      // server actions from state (functions can't be JSON-serialized).
+      this.serverActionVars = new Map();
     },
 
     // Called once after traversing each file.
@@ -148,8 +152,16 @@ export default function boseOptimizer() {
           const chunkId = `chunk_${contentHash(hashInput)}`;
           const chunkFilename = `${chunkId}.js`;
 
-          // 4. Build chunk content using the safely-regenerated function source
+          // 4. Build chunk content using the safely-regenerated function source.
+          //    Server action variables (from server$()) cannot be serialized to JSON, so
+          //    they are never stored in bose:state. Instead, inline the fetch call directly
+          //    using the known actionId — no state needed, works in every browser chunk.
+          const stateVars = variablesList.filter(v => !state.serverActionVars.has(v));
           const destructuring = variablesList.map(v => {
+            if (state.serverActionVars.has(v)) {
+              const actionId = state.serverActionVars.get(v);
+              return `const ${v} = async (...args) => fetch('/_bose_action', { method: 'POST', body: JSON.stringify({ id: '${actionId}', args }) }).then(r => r.json());`;
+            }
             if (signalsList.has(v)) {
               return `const ${v} = new Signal(state.${v}, '${v}');`;
             }
@@ -160,10 +172,10 @@ export default function boseOptimizer() {
             `/** BOSE GENERATED CHUNK: ${chunkId} **/`,
             `import { Signal } from '@bosejs/state';`,
             ``,
-            `export default function(state, element) {`,
+            `export default function(state, element, event) {`,
             `  ${destructuring}`,
             `  const logic = ${fnSource};`,
-            `  logic(state, element);`,
+            `  logic(event);`,
             `  return {`,
             `    ${signalsArray.map(s => `${s}: ${s}.value`).join(',\n    ')}`,
             `  };`,
@@ -181,11 +193,13 @@ export default function boseOptimizer() {
             writeToDisk(outputDir, chunkFilename, chunkContent);
           }
 
-          // 6. Replace $(...) with a plain descriptor object the renderer can use
+          // 6. Replace $(...) with a plain descriptor object the renderer can use.
+          //    Only include state-serializable vars in props — server actions are inlined
+          //    directly in the chunk and must not appear in bose:state.
           const chunkPath = `chunks/${chunkFilename}`;
           babelPath.replaceWith(t.objectExpression([
             t.objectProperty(t.identifier('chunk'), t.stringLiteral(chunkPath)),
-            t.objectProperty(t.identifier('props'), t.arrayExpression(variablesList.map(v => t.stringLiteral(v)))),
+            t.objectProperty(t.identifier('props'), t.arrayExpression(stateVars.map(v => t.stringLiteral(v)))),
             t.objectProperty(t.identifier('signals'), t.arrayExpression(signalsArray.map(v => t.stringLiteral(v))))
           ]));
         }
@@ -201,6 +215,21 @@ export default function boseOptimizer() {
           const fnSource = nodeToCode(serverFunction);
           const actionId = `action_${contentHash(`${state.filename}:${fnSource}`)}`;
           console.log(`[Bose Optimizer] Registered Server Action: ${actionId}`);
+
+          // Hand the server function source to the Vite plugin so the dev-server
+          // middleware can actually execute it when /_bose_action is called.
+          // The emitted module is a plain ESM file: `export default <fn>;`
+          if (state.opts.actionCollector) {
+            state.opts.actionCollector.set(actionId, `export default ${fnSource};\n`);
+          }
+
+          // Record variable name → actionId so $() chunks can inline the RPC
+          // call instead of trying to read it from bose:state (functions aren't
+          // JSON-serializable, so state-based capture silently produces undefined).
+          const parentNode = babelPath.parentPath && babelPath.parentPath.node;
+          if (parentNode && t.isVariableDeclarator(parentNode) && t.isIdentifier(parentNode.id)) {
+            state.serverActionVars.set(parentNode.id.name, actionId);
+          }
 
           babelPath.replaceWith(t.arrowFunctionExpression(
             [t.restElement(t.identifier('args'))],

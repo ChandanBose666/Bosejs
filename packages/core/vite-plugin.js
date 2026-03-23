@@ -29,6 +29,16 @@ export default function bosePlugin(options = {}) {
   //   build → this.emitFile() (Rollup manages output directory)
   let isBuild = false;
 
+  // Registry of server actions collected during transform().
+  // Key: actionId (e.g. "action_a1b2c3d4e")
+  // Value: path to the temp ESM module written to node_modules/.bose/actions/
+  // Populated by transform(), consumed by the configureServer middleware.
+  const actionModules = new Map();
+  const actionTmpDir = path.join(process.cwd(), 'node_modules/.bose/actions');
+
+  // Reference to the Vite dev server — set inside configureServer().
+  let devServer = null;
+
   return {
     name: 'vite-plugin-bose',
 
@@ -37,6 +47,7 @@ export default function bosePlugin(options = {}) {
     },
 
     configureServer(server) {
+      devServer = server;
       server.middlewares.use(async (req, res, next) => {
         // 0. Serve Bose Runtime
         if (req.url === '/bose-runtime.js') {
@@ -54,7 +65,7 @@ export default function bosePlugin(options = {}) {
           return;
         }
 
-        // 1. Handle RPC Actions
+        // 1. Handle RPC Actions — load and execute the real server function
         if (req.url === actionEndpoint && req.method === 'POST') {
           let body = '';
           req.on('data', chunk => { body += chunk; });
@@ -62,12 +73,27 @@ export default function bosePlugin(options = {}) {
             try {
               const { id, args } = JSON.parse(body);
               console.log(`[Bose RPC] Invoking: ${id} with args:`, args);
+
+              const tmpPath = actionModules.get(id);
+              if (!tmpPath) {
+                res.statusCode = 404;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: `No server action registered for id: ${id}. Did the page finish loading?` }));
+                return;
+              }
+
+              // ssrLoadModule handles ESM + source maps. Invalidate first so
+              // HMR changes always pick up the latest function body.
+              const existing = devServer.moduleGraph.getModulesByFile(tmpPath);
+              if (existing) {
+                for (const mod of existing) devServer.moduleGraph.invalidateModule(mod);
+              }
+
+              const mod = await devServer.ssrLoadModule(tmpPath);
+              const result = await mod.default(...args);
+
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({
-                success: true,
-                data: `Server received: ${args[0]}`,
-                processedAt: new Date().toISOString()
-              }));
+              res.end(JSON.stringify(result));
             } catch (err) {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: err.message }));
@@ -212,9 +238,11 @@ export default function bosePlugin(options = {}) {
           `;
         }
 
-        // Per-file collector: the Babel plugin fills this Map during transformSync.
-        // We process it immediately after — while `this` (Vite plugin context) is still valid.
+        // Per-file collectors: filled by the Babel plugin during transformSync.
+        // chunkCollector  — event-handler chunks for $() markers
+        // actionCollector — server function modules for server$() markers
         const chunkCollector = new Map();
+        const actionCollector = new Map();
         const resolvedOutputDir = path.resolve(process.cwd(), outputDir);
 
         const result = babel.transformSync(targetCode, {
@@ -223,6 +251,7 @@ export default function bosePlugin(options = {}) {
             [boseOptimizer, {
               outputDir: resolvedOutputDir,
               chunkCollector,
+              actionCollector,
             }]
           ],
           filename: id,
@@ -244,6 +273,26 @@ export default function bosePlugin(options = {}) {
               fs.mkdirSync(resolvedOutputDir, { recursive: true });
             }
             fs.writeFileSync(path.join(resolvedOutputDir, filename), content);
+          }
+        }
+
+        // Register server action modules.
+        for (const [actionId, src] of actionCollector) {
+          if (isBuild) {
+            // Production: emit to dist/actions/ so the production server can import() them.
+            this.emitFile({
+              type: 'asset',
+              fileName: `actions/${actionId}.js`,
+              source: src,
+            });
+          } else {
+            // Dev: write to a temp dir under node_modules so ssrLoadModule can pick them up.
+            if (!fs.existsSync(actionTmpDir)) {
+              fs.mkdirSync(actionTmpDir, { recursive: true });
+            }
+            const tmpPath = path.join(actionTmpDir, `${actionId}.js`);
+            fs.writeFileSync(tmpPath, src);
+            actionModules.set(actionId, tmpPath);
           }
         }
 

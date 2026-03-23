@@ -9,6 +9,8 @@
   ],
   "scripts": {
     "dev": "vite",
+    "build": "vite build && node scripts/prerender.mjs",
+    "start": "node server.js",
     "serve": "npx serve playground",
     "publish:compiler": "npm publish --access public --workspace packages/compiler",
     "publish:runtime": "npm publish --access public --workspace packages/runtime",
