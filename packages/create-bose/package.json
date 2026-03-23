@@ -1,6 +1,6 @@
 {
   "name": "create-bose",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Scaffold a new Bosejs application — zero hydration, resumable islands, lazy chunks.",
   "type": "module",
   "bin": {
@@ -19,7 +19,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bosejs/bosejs.git",
+    "url": "git+https://github.com/ChandanBose666/Bosejs.git",
     "directory": "packages/create-bose"
   },
   "keywords": [
