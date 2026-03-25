@@ -197,10 +197,31 @@ export default function boseOptimizer() {
           //    Only include state-serializable vars in props — server actions are inlined
           //    directly in the chunk and must not appear in bose:state.
           const chunkPath = `chunks/${chunkFilename}`;
+
+          // Build per-variable entries for the JSON.stringify argument.
+          // Signals: serialize as varName.value (the primitive, not the Signal object).
+          // Plain vars (css$ output, props, literals): serialize as-is via shorthand.
+          const stateEntries = stateVars.map(v =>
+            t.objectProperty(
+              t.identifier(v),
+              signalsList.has(v)
+                ? t.memberExpression(t.identifier(v), t.identifier('value'))
+                : t.identifier(v)
+            )
+          );
+
           babelPath.replaceWith(t.objectExpression([
             t.objectProperty(t.identifier('chunk'), t.stringLiteral(chunkPath)),
+            // props = stateVars (server action vars excluded — inlined in chunks, not useful as metadata).
             t.objectProperty(t.identifier('props'), t.arrayExpression(stateVars.map(v => t.stringLiteral(v)))),
-            t.objectProperty(t.identifier('signals'), t.arrayExpression(signalsArray.map(v => t.stringLiteral(v))))
+            t.objectProperty(t.identifier('signals'), t.arrayExpression(signalsArray.map(v => t.stringLiteral(v)))),
+            t.objectProperty(
+              t.identifier('state'),
+              t.callExpression(
+                t.memberExpression(t.identifier('JSON'), t.identifier('stringify')),
+                [t.objectExpression(stateEntries)]
+              )
+            )
           ]));
         }
 
