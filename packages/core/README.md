@@ -40,7 +40,7 @@ export default function Home() {
     <div>
       <span bose:bind="count">${count.value}</span>
       <button bose:on:click="${increment.chunk}"
-              bose:state='${JSON.stringify({ count: count.value })}'>+</button>
+              bose:state='${increment.state}'>+</button>
     </div>
   `;
 }
@@ -65,6 +65,7 @@ npx create-bose my-app
 | `bose:state` | Serializes state into HTML for resumption |
 | `css$()` | Scoped CSS extracted at build time, zero runtime cost |
 | `server$()` | Marks a function as server-only (Auto-RPC) |
+| `$().state` | Auto-generated JSON string for `bose:state` — no manual serialization needed |
 
 ## File-based routing
 
