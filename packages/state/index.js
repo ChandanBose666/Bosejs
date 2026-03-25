@@ -3,16 +3,17 @@
  * Fine-grained reactivity for resumable frameworks.
  */
 
-// Node-only guard: synchronous require so this works at module load time.
-// AsyncLocalStorage is not available in the browser — the catch makes storage
-// null safely, which causes setSSRContext and the store check to be no-ops.
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-
+// Node-only guard: use dynamic import so this module is browser-safe.
+// `async_hooks` does not exist in browsers — the catch makes storage null,
+// which causes setSSRContext and the store check to be silent no-ops.
+// Top-level await is valid here: the package is pure ESM (type: "module"),
+// Node >= 14.8 supports it, and bundlers (Vite/webpack) handle it correctly.
 let storage = null;
 try {
-  const { AsyncLocalStorage } = require('async_hooks');
-  storage = new AsyncLocalStorage();
+  if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+    const { AsyncLocalStorage } = await import('async_hooks');
+    storage = new AsyncLocalStorage();
+  }
 } catch {
   // Browser, Deno, or environment without async_hooks.
 }
@@ -77,6 +78,16 @@ export function useSignal(initialValue, id) {
     }
   }
   return new Signal(value, id);
+}
+
+/**
+ * Retrieve all signal values set via setSSRContext for the current request.
+ * Returns undefined outside a storage.run() context or in the browser.
+ */
+export function getSSRContext() {
+  if (!storage) return undefined;
+  const store = storage.getStore();
+  return store ? { ...store } : undefined;
 }
 
 /** Exposed for the Vite plugin to create a fresh per-request context. */

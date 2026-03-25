@@ -9,11 +9,17 @@
     ".": {
       "types": "./bose-loader.d.ts",
       "default": "./bose-loader.js"
+    },
+    "./hydration": {
+      "types": "./hydration.d.ts",
+      "default": "./hydration.js"
     }
   },
   "files": [
     "bose-loader.js",
     "bose-loader.d.ts",
+    "hydration.js",
+    "hydration.d.ts",
     "LICENSE",
     "README.md"
   ],

@@ -3,6 +3,7 @@ import generate from '@babel/generator';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { buildBoseError, ERROR_CODES } from './errors.js';
 
 /**
  * Write a chunk to disk.
@@ -109,34 +110,162 @@ export default function boseOptimizer() {
           const innerFunction = babelPath.node.arguments[0];
 
           if (!t.isFunction(innerFunction)) {
-            throw babelPath.buildCodeFrameError('The $( ) marker must contain a function.');
+            throw buildBoseError(babelPath, ERROR_CODES.BOSE_E001,
+              'The $( ) marker must contain a function.',
+              { suggestion: 'Wrap your event-handler logic in an arrow function: $(() => { ... })' });
           }
 
-          // 1. Analyze Scope: Identify variables used from outside
+          // 1. Analyze Scope: Identify variables used from outside.
+          //
+          // We maintain our own scope stack rather than relying solely on
+          // innerFunctionPath.scope.hasOwnBinding(), which only checks the
+          // outermost function scope.  Nested scopes (arrow function params,
+          // catch clause params, for-loop vars, block-scoped let/const) must
+          // also be tracked as locals so they are never incorrectly captured.
           const usedVariables = new Set();
           const signalsList = new Set();
           const innerFunctionPath = babelPath.get('arguments.0');
 
+          // Scope stack: each entry is a Set of locally-bound names.
+          // We push on scope entry and pop on exit.
+          const scopeStack = [new Set()];
+
+          // Seed the outermost scope with params of the $() function itself.
+          const registerParams = (params) => {
+            const top = scopeStack[scopeStack.length - 1];
+            for (const param of params) {
+              if (t.isIdentifier(param)) {
+                top.add(param.name);
+              } else if (t.isAssignmentPattern(param) && t.isIdentifier(param.left)) {
+                top.add(param.left.name);
+              } else if (t.isRestElement(param) && t.isIdentifier(param.argument)) {
+                top.add(param.argument.name);
+              } else if (t.isObjectPattern(param) || t.isArrayPattern(param)) {
+                // Recursively collect destructuring targets.
+                const collectDestructured = (node) => {
+                  if (t.isIdentifier(node)) { top.add(node.name); return; }
+                  if (t.isAssignmentPattern(node)) { collectDestructured(node.left); return; }
+                  if (t.isRestElement(node)) { collectDestructured(node.argument); return; }
+                  if (t.isObjectPattern(node)) { node.properties.forEach(p => collectDestructured(t.isRestElement(p) ? p : p.value)); return; }
+                  if (t.isArrayPattern(node)) { node.elements.forEach(e => e && collectDestructured(e)); }
+                };
+                collectDestructured(param);
+              }
+            }
+          };
+          registerParams(innerFunctionPath.node.params);
+
+          const isLocallyBound = (name) =>
+            scopeStack.some(scope => scope.has(name));
+
           innerFunctionPath.traverse({
-            Identifier(idPath) {
-              if (idPath.isReferencedIdentifier()) {
-                const name = idPath.node.name;
-                const binding = idPath.scope.getBinding(name);
+            // ── Nested functions (including arrow functions): push a new scope for their params ──
+            // NOTE: Use 'Function' only — ArrowFunctionExpression is already a subtype of Function
+            // in Babel's type hierarchy. Using 'Function|ArrowFunctionExpression' would cause
+            // arrow functions to push/pop the scope stack twice.
+            Function: {
+              enter(fnPath) {
+                const scope = new Set();
+                scopeStack.push(scope);
+                // Reuse registerParams — it reads from scopeStack top, which is now `scope`.
+                // This handles all param shapes: Identifier, AssignmentPattern, RestElement,
+                // ObjectPattern (destructuring), and ArrayPattern (destructuring).
+                registerParams(fnPath.node.params);
+              },
+              exit() {
+                scopeStack.pop();
+              },
+            },
 
-                if (binding && !innerFunctionPath.scope.hasOwnBinding(name)) {
-                  usedVariables.add(name);
+            // ── Catch clause: catch(e) binds `e` in a new scope ──
+            CatchClause: {
+              enter(catchPath) {
+                const scope = new Set();
+                scopeStack.push(scope);
+                if (catchPath.node.param && t.isIdentifier(catchPath.node.param)) {
+                  scope.add(catchPath.node.param.name);
+                }
+              },
+              exit() {
+                scopeStack.pop();
+              },
+            },
 
-                  const parentPath = binding.path;
-                  if (
-                    parentPath.isVariableDeclarator() &&
-                    t.isCallExpression(parentPath.node.init) &&
-                    parentPath.node.init.callee.name === 'useSignal'
-                  ) {
-                    signalsList.add(name);
+            // ── Block-scoped let/const declarations ──
+            VariableDeclaration(declPath) {
+              if (declPath.node.kind === 'let' || declPath.node.kind === 'const') {
+                const top = scopeStack[scopeStack.length - 1];
+                for (const declarator of declPath.node.declarations) {
+                  if (t.isIdentifier(declarator.id)) {
+                    top.add(declarator.id.name);
+                  } else if (t.isObjectPattern(declarator.id) || t.isArrayPattern(declarator.id)) {
+                    const collectIds = (node) => {
+                      if (t.isIdentifier(node)) { top.add(node.name); return; }
+                      if (t.isAssignmentPattern(node)) { collectIds(node.left); return; }
+                      if (t.isRestElement(node)) { collectIds(node.argument); return; }
+                      if (t.isObjectPattern(node)) { node.properties.forEach(p => collectIds(t.isRestElement(p) ? p : p.value)); return; }
+                      if (t.isArrayPattern(node)) { node.elements.forEach(e => e && collectIds(e)); }
+                    };
+                    collectIds(declarator.id);
                   }
                 }
               }
-            }
+            },
+
+            // ── For-loop var declarations (for/for-in/for-of) ──
+            ForStatement(forPath) {
+              if (forPath.node.init && t.isVariableDeclaration(forPath.node.init)) {
+                const top = scopeStack[scopeStack.length - 1];
+                forPath.node.init.declarations.forEach(d => {
+                  if (t.isIdentifier(d.id)) top.add(d.id.name);
+                });
+              }
+            },
+            ForInStatement(forPath) {
+              if (forPath.node.left && t.isVariableDeclaration(forPath.node.left)) {
+                const top = scopeStack[scopeStack.length - 1];
+                forPath.node.left.declarations.forEach(d => {
+                  if (t.isIdentifier(d.id)) top.add(d.id.name);
+                });
+              }
+            },
+            ForOfStatement(forPath) {
+              if (forPath.node.left && t.isVariableDeclaration(forPath.node.left)) {
+                const top = scopeStack[scopeStack.length - 1];
+                forPath.node.left.declarations.forEach(d => {
+                  if (t.isIdentifier(d.id)) top.add(d.id.name);
+                });
+              }
+            },
+
+            // ── Referenced identifiers: only capture if truly external ──
+            Identifier(idPath) {
+              if (!idPath.isReferencedIdentifier()) return;
+              const name = idPath.node.name;
+
+              // Skip if bound locally anywhere in our scope stack.
+              if (isLocallyBound(name)) return;
+
+              // Skip if defined in the enclosing outer scope via Babel's binding
+              // resolution (handles imports, module-level consts, etc. that should
+              // NOT be serialized into the chunk state).
+              const binding = idPath.scope.getBinding(name);
+              if (!binding) return; // global / built-in — not a captured var
+
+              // Only capture if the binding originates outside the $() function.
+              if (!innerFunctionPath.scope.hasOwnBinding(name)) {
+                usedVariables.add(name);
+
+                const parentPath = binding.path;
+                if (
+                  parentPath.isVariableDeclarator() &&
+                  t.isCallExpression(parentPath.node.init) &&
+                  parentPath.node.init.callee.name === 'useSignal'
+                ) {
+                  signalsList.add(name);
+                }
+              }
+            },
           });
 
           const variablesList = Array.from(usedVariables);
@@ -233,7 +362,9 @@ export default function boseOptimizer() {
         if (isServerMarker) {
           const serverFunction = babelPath.node.arguments[0];
           if (!t.isFunction(serverFunction)) {
-            throw babelPath.buildCodeFrameError('server$( ) must contain a function.');
+            throw buildBoseError(babelPath, ERROR_CODES.BOSE_E002,
+              'server$( ) must contain a function.',
+              { suggestion: 'Wrap your server logic in an arrow function: server$(() => { ... })' });
           }
 
           // Deterministic action ID: hash of file path + server function source
@@ -296,7 +427,9 @@ export default function boseOptimizer() {
           } else if (t.isTemplateLiteral(cssArg.node)) {
             rawCss = cssArg.node.quasis.map(q => q.value.raw).join('');
           } else {
-            throw babelPath.buildCodeFrameError('css$( ) must contain a string literal or template literal.');
+            throw buildBoseError(babelPath, ERROR_CODES.BOSE_E003,
+              'css$( ) must contain a string literal or template literal.',
+              { suggestion: 'Pass a plain string: css$(`.my-class { color: red; }`)' });
           }
 
           // Deterministic scope ID: hash of file path + raw CSS content

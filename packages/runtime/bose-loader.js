@@ -7,6 +7,13 @@
  * before this script loads to enable verbose output.
  */
 
+// ── Hydration Bootstrap ───────────────────────────────────────────────────────
+// Import the HydrationManager and parse the server-injected <script> tag as
+// early as possible, before any user interaction can trigger a chunk load.
+// This is a no-op if the script tag is absent (e.g. pages with no SSR state).
+import { hydration } from './hydration.js';
+hydration.hydrateFromScript();
+
 const signalRegistry = new Map();
 const moduleCache = new Map();
 const stateCache = new WeakMap();

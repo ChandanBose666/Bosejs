@@ -7,6 +7,7 @@ import matter from 'gray-matter';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { __ssrStorage } from '@bosejs/state';
+import { hydration } from '@bosejs/runtime/hydration';
 
 const _require = createRequire(import.meta.url);
 
@@ -42,6 +43,25 @@ export default function bosePlugin(options = {}) {
 
   return {
     name: 'vite-plugin-bose',
+
+    /**
+     * Auto-configure Vite so users don't need to set ssr.noExternal or
+     * optimizeDeps.exclude manually for Bose packages.
+     */
+    config() {
+      return {
+        optimizeDeps: {
+          // Bose packages are pure ESM with top-level await — pre-bundling
+          // them with esbuild produces CJS that breaks async_hooks detection.
+          exclude: ['@bosejs/state', '@bosejs/runtime', '@bosejs/compiler', '@bosejs/core'],
+        },
+        ssr: {
+          // Keep Bose packages as ESM during SSR — required for the
+          // conditional async_hooks import in @bosejs/state to work correctly.
+          noExternal: ['@bosejs/state', '@bosejs/runtime', '@bosejs/compiler', '@bosejs/core'],
+        },
+      };
+    },
 
     configResolved(config) {
       isBuild = config.command === 'build';
@@ -128,6 +148,11 @@ export default function bosePlugin(options = {}) {
           if (targetFile) {
             let htmlContent = '';
             try {
+              // Reset the hydration store for this request — prevents values
+              // from a previous request leaking into the next one's payload.
+              hydration._store = new Map();
+              hydration._hydrated = false;
+
               const runInContext = __ssrStorage
                 ? (fn) => __ssrStorage.run({}, fn)  // fresh empty store per request
                 : (fn) => fn();                      // fallback: storage unavailable
@@ -204,6 +229,7 @@ export default function bosePlugin(options = {}) {
                     ${styles}
                   </style>
                   <script type="module" src="/bose-runtime.js"></script>
+                  ${hydration.serialize()}
                 </head>
                 <body>
                   <div id="root">${htmlContent}</div>
@@ -311,6 +337,37 @@ export default function bosePlugin(options = {}) {
         fs.appendFileSync('bose-error.log', `Error in ${id}: ${err.message}\n`);
         return null;
       }
-    }
+    },
+
+    /**
+     * HMR: when a .js or .bose file that uses $() markers changes, invalidate
+     * any previously-written chunks so the next interaction gets fresh code.
+     * The file is re-transformed automatically by Vite's normal HMR pipeline;
+     * this hook only cleans up stale disk-chunks so they don't linger.
+     */
+    handleHotUpdate({ file, server: hmrServer }) {
+      const isJs = file.endsWith('.js') || file.endsWith('.bose');
+      if (!isJs || file.includes('node_modules')) return;
+
+      // Clear the scoped-CSS cache entry for this file so the next SSR render
+      // picks up the new styles rather than serving stale ones.
+      const styleMap = global.__BOSE_STYLE_MAP__;
+      if (styleMap && styleMap.has(file)) {
+        styleMap.delete(file);
+      }
+
+      // Invalidate any cached server-action modules derived from this file,
+      // keyed by the action temp path containing the file's base name.
+      const base = path.basename(file, path.extname(file));
+      for (const [actionId, tmpPath] of actionModules) {
+        if (tmpPath.includes(base)) {
+          const mods = hmrServer.moduleGraph.getModulesByFile(tmpPath);
+          if (mods) {
+            for (const mod of mods) hmrServer.moduleGraph.invalidateModule(mod);
+          }
+          actionModules.delete(actionId);
+        }
+      }
+    },
   };
 }

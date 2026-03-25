@@ -29,10 +29,15 @@ export interface BosePluginOptions {
 /**
  * Bose Vite plugin.
  *
- * Add to your `vite.config.js`:
+ * Automatically configures:
+ * - `optimizeDeps.exclude` for all `@bosejs/*` packages (pure ESM, top-level await)
+ * - `ssr.noExternal` for all `@bosejs/*` packages (keeps ESM intact during SSR)
+ * - HMR invalidation for files using `$()` and `server$()` markers
+ *
+ * Minimal `vite.config.js`:
  * @example
  * import { defineConfig } from 'vite';
- * import bosePlugin from 'bose';
+ * import bosePlugin from '@bosejs/core';
  *
  * export default defineConfig({
  *   plugins: [bosePlugin()],

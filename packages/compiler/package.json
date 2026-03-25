@@ -9,11 +9,17 @@
     ".": {
       "types": "./optimizer.d.ts",
       "default": "./optimizer.js"
+    },
+    "./errors": {
+      "types": "./errors.d.ts",
+      "default": "./errors.js"
     }
   },
   "files": [
     "optimizer.js",
     "optimizer.d.ts",
+    "errors.js",
+    "errors.d.ts",
     "LICENSE",
     "README.md"
   ],

@@ -53,3 +53,23 @@ export declare function useSignal<T>(initialValue: T, id?: string): Signal<T>;
  * }
  */
 export declare function setSSRContext(values: Record<string, unknown>): void;
+
+/**
+ * Retrieve signal values previously set via `setSSRContext` for the current
+ * SSR request. Returns `undefined` outside a `storage.run()` context or in
+ * the browser.
+ *
+ * @example
+ * setSSRContext({ 'cart-count': 3 });
+ * const ctx = getSSRContext(); // { 'cart-count': 3 }
+ */
+export declare function getSSRContext(): Record<string, unknown> | undefined;
+
+/**
+ * The underlying `AsyncLocalStorage` instance used by the SSR context system.
+ * Exposed so the Vite plugin can wrap each request in `storage.run({}, fn)`.
+ * `null` in the browser or any environment without `async_hooks`.
+ *
+ * @internal
+ */
+export declare const __ssrStorage: import('async_hooks').AsyncLocalStorage<Record<string, unknown>> | null;
