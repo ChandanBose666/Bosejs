@@ -6,6 +6,7 @@ import { marked } from 'marked';
 import matter from 'gray-matter';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
+import { __ssrStorage } from '@bosejs/state';
 
 const _require = createRequire(import.meta.url);
 
@@ -21,7 +22,7 @@ export default function bosePlugin(options = {}) {
   // css$ returns an empty object (no styles at runtime — styles are
   // collected during Babel transform and injected into the HTML shell).
   global.css$ = () => ({});
-  global.$ = () => ({ chunk: 'dummy.js', props: [] });
+  global.$ = () => ({ chunk: 'dummy.js', props: [], signals: [], state: '{}' });
   global.server$ = () => (async () => ({}));
 
   // Set by configResolved. Drives chunk emission strategy:
@@ -127,9 +128,15 @@ export default function bosePlugin(options = {}) {
           if (targetFile) {
             let htmlContent = '';
             try {
-              const module = await server.ssrLoadModule(targetFile);
-              const component = module.default;
-              htmlContent = typeof component === 'function' ? await component({ params }) : component;
+              const runInContext = __ssrStorage
+                ? (fn) => __ssrStorage.run({}, fn)  // fresh empty store per request
+                : (fn) => fn();                      // fallback: storage unavailable
+
+              htmlContent = await runInContext(async () => {
+                const module = await server.ssrLoadModule(targetFile);
+                const component = module.default;
+                return typeof component === 'function' ? await component({ params }) : component;
+              });
             } catch (e) {
               console.error(`[Bose SSR Error] ${targetFile}:`, e);
               htmlContent = `<div style="padding: 2rem; background: #fee2e2; color: #991b1b; border-radius: 0.5rem; margin: 2rem;">
