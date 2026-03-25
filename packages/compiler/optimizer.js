@@ -214,7 +214,11 @@ export default function boseOptimizer() {
             t.objectProperty(t.identifier('chunk'), t.stringLiteral(chunkPath)),
             // props = stateVars (server action vars excluded — inlined in chunks, not useful as metadata).
             t.objectProperty(t.identifier('props'), t.arrayExpression(stateVars.map(v => t.stringLiteral(v)))),
+            // signals uses signalsArray (from signalsList, built before the server-action filter).
+            // Safe: a useSignal variable can never also be a server$() variable — no overlap possible.
             t.objectProperty(t.identifier('signals'), t.arrayExpression(signalsArray.map(v => t.stringLiteral(v)))),
+            // state: pre-serialized JSON string — use directly as bose:state attribute value.
+            // JSON.stringify evaluates at SSR render time; do NOT JSON.parse before use in templates.
             t.objectProperty(
               t.identifier('state'),
               t.callExpression(
