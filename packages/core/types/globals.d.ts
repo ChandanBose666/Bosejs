@@ -32,6 +32,12 @@ interface BoseChunkDescriptor {
   props: string[];
   /** Subset of `props` that are signals (reconstructed as `Signal` on resumption). */
   signals: string[];
+  /**
+   * Auto-generated JSON string for use as the `bose:state` HTML attribute value.
+   * Use directly: `bose:state='${handle.state}'`
+   * Replaces manual `JSON.stringify({ ... })` in templates.
+   */
+  state: string;
 }
 
 // ── Global declarations ───────────────────────────────────────────────────────

@@ -5,12 +5,8 @@
 /**
  * A reactive value container. When `.value` is set, the runtime propagates
  * the change to all DOM nodes bound to this signal's ID via `bose:bind`.
- *
- * @example
- * const count = useSignal(0);
- * count.value++; // triggers DOM update for [bose:bind="count"]
  */
-export declare class Signal<T> {
+export declare class Signal<T = unknown> {
   /** Stable ID used to identify this signal in the DOM and runtime registry. */
   readonly id: string;
 
@@ -32,14 +28,28 @@ export declare class Signal<T> {
  *
  * The `id` parameter is normally injected automatically by the Bose compiler.
  * You only need to supply it explicitly when you want two independent islands
- * to share the same global signal (Bose's "Nervous System" feature):
+ * to share the same global signal (Bose's "Nervous System" feature).
  *
  * @example
- * // Automatic ID injection (recommended) — compiler fills it in:
- * const count = useSignal(0);
- *
- * @example
- * // Explicit shared ID — both islands react to the same signal:
- * const count = useSignal(0, 'cart-item-count');
+ * const count = useSignal(0);            // compiler injects ID
+ * const cart = useSignal(0, 'cart-count'); // explicit shared ID
  */
 export declare function useSignal<T>(initialValue: T, id?: string): Signal<T>;
+
+/**
+ * Seed signal initial values for the current SSR request.
+ *
+ * Call this in a page handler before any `useSignal` call. The values are
+ * stored in a per-request `AsyncLocalStorage` context and read by `useSignal`
+ * to override the `initialValue` fallback during server-side rendering.
+ *
+ * No-op in the browser (where `AsyncLocalStorage` is unavailable).
+ * No-op if called outside a `storage.run()` context (e.g. in tests without setup).
+ *
+ * @example
+ * export default async function CartPage({ params }) {
+ *   setSSRContext({ 'cart-count': await cartStore.getCount() });
+ *   const cartCount = useSignal(0, 'cart-count'); // resolves to real count
+ * }
+ */
+export declare function setSSRContext(values: Record<string, unknown>): void;
