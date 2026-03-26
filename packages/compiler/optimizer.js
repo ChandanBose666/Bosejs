@@ -272,16 +272,52 @@ export default function boseOptimizer() {
           const signalsArray = Array.from(signalsList);
           console.log(`[Bose Optimizer] Captured variables:`, variablesList, 'Signals:', signalsArray);
 
-          // 2. Regenerate function source from AST (safe — not affected by prior transforms)
+          // 2. Pre-process css$() calls inside the $() body.
+          //    css$() is a compile-time macro visited after outer $() in depth-first order.
+          //    nodeToCode() below must see a fully-transformed AST, so we handle any
+          //    css$() calls nested inside the chunk function here before extraction.
+          innerFunctionPath.traverse({
+            CallExpression(cssPath) {
+              const cssCallee = cssPath.node.callee;
+              if (!t.isIdentifier(cssCallee) || cssCallee.name !== 'css$') return;
+
+              const cssArg = cssPath.get('arguments.0');
+              let rawCss = '';
+              if (t.isStringLiteral(cssArg.node)) {
+                rawCss = cssArg.node.value;
+              } else if (t.isTemplateLiteral(cssArg.node)) {
+                rawCss = cssArg.node.quasis.map(q => q.value.raw).join('');
+              } else {
+                throw buildBoseError(cssPath, ERROR_CODES.BOSE_E003,
+                  'css$( ) must contain a string literal or template literal.',
+                  { suggestion: 'Pass a plain string: css$(`.my-class { color: red; }`)' });
+              }
+
+              const scopeId = `b${contentHash(`${state.filename}:${rawCss}`).slice(0, 6)}`;
+              const classRegex = /\.([a-zA-Z_][a-zA-Z0-9_-]*)/g;
+              const scopedCss = rawCss.replace(classRegex, `.$1-${scopeId}`);
+              state.boseStyles.push(scopedCss);
+
+              const classMatches = Array.from(rawCss.matchAll(classRegex));
+              cssPath.replaceWith(t.objectExpression(
+                classMatches.map(match => {
+                  const cn = match[1];
+                  return t.objectProperty(t.stringLiteral(cn), t.stringLiteral(`${cn}-${scopeId}`));
+                })
+              ));
+            },
+          });
+
+          // 3. Regenerate function source from AST (safe — not affected by prior transforms)
           const fnSource = nodeToCode(innerFunction);
 
-          // 3. Deterministic chunk ID: hash of file path + function source + captured vars
+          // 4. Deterministic chunk ID: hash of file path + function source + captured vars
           //    Same source in same file always produces the same chunk filename across builds.
           const hashInput = `${state.filename}:${fnSource}:${variablesList.join(',')}`;
           const chunkId = `chunk_${contentHash(hashInput)}`;
           const chunkFilename = `${chunkId}.js`;
 
-          // 4. Build chunk content using the safely-regenerated function source.
+          // 5. Build chunk content using the safely-regenerated function source.
           //    Server action variables (from server$()) cannot be serialized to JSON, so
           //    they are never stored in bose:state. Instead, inline the fetch call directly
           //    using the known actionId — no state needed, works in every browser chunk.
@@ -311,7 +347,7 @@ export default function boseOptimizer() {
             `}`,
           ].join('\n');
 
-          // 5. Hand chunk off — either to the Vite collector or directly to disk.
+          // 6. Hand chunk off — either to the Vite collector or directly to disk.
           //    chunkCollector is a Map provided by vite-plugin.js during its transform hook.
           //    When present, the Vite plugin decides how to emit (emitFile vs fs.write).
           //    When absent (standalone / test usage), fall back to writing to disk.
@@ -322,7 +358,7 @@ export default function boseOptimizer() {
             writeToDisk(outputDir, chunkFilename, chunkContent);
           }
 
-          // 6. Replace $(...) with a plain descriptor object the renderer can use.
+          // 7. Replace $(...) with a plain descriptor object the renderer can use.
           //    Only include state-serializable vars in props — server actions are inlined
           //    directly in the chunk and must not appear in bose:state.
           const chunkPath = `chunks/${chunkFilename}`;

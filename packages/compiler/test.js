@@ -1,6 +1,7 @@
 import babel from '@babel/core';
 import optimizer from './optimizer.js';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import assert from 'assert';
 
@@ -322,6 +323,45 @@ test('for-in key variable is not captured', () => {
   `);
   const vars = capturedVars(out.code);
   assert.ok(!vars.includes('key'), 'for-in key must NOT be captured');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group 7: css$() inside $() pre-transformation
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\nGroup 7: css$() inside $() pre-transformation');
+
+test('css$() inside $() body is inlined as static object in chunk', () => {
+  const out = compile(`
+    const count = useSignal(0);
+    const h = $(() => {
+      const styles = css$(\`.btn { color: red; }\`);
+      element.classList.add(styles.btn);
+      count.value++;
+    });
+  `);
+  // css$() inside the body must be gone — replaced with a static object literal
+  assert.ok(!out.code.includes('css$('), 'chunk source must not contain raw css$() call');
+  // The chunk file (written to disk) must contain the static class mapping, not css$()
+  const chunkMatch = out.code.match(/chunk:\s*["']chunks\/(chunk_[^"']+)["']/);
+  assert.ok(chunkMatch, 'chunk path must be emitted');
+  const chunkPath = path.join(__dirname, '../../playground/dist', chunkMatch[1]);
+  const chunkSource = fs.readFileSync(chunkPath, 'utf8');
+  assert.ok(!chunkSource.includes('css$('), 'generated chunk must not contain css$()');
+  assert.ok(chunkSource.includes('"btn"') || chunkSource.includes("'btn'"), 'chunk must contain static class mapping');
+});
+
+test('css$() outside $() is captured in state normally', () => {
+  const out = compile(`
+    const styles = css$(\`.btn { color: red; }\`);
+    const count = useSignal(0);
+    const h = $(() => {
+      element.classList.add(styles.btn);
+      count.value++;
+    });
+  `);
+  const vars = capturedVars(out.code);
+  assert.ok(vars.includes('styles'), 'external css$() var must be captured in state');
+  assert.ok(vars.includes('count'), 'signal must still be captured');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
